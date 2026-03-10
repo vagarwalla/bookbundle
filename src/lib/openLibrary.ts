@@ -2,6 +2,7 @@ import type { BookSearchResult, Edition, Format } from './types'
 
 const BASE = 'https://openlibrary.org'
 const COVERS = 'https://covers.openlibrary.org'
+const GB_KEY = process.env.GOOGLE_BOOKS_API_KEY ? `&key=${process.env.GOOGLE_BOOKS_API_KEY}` : ''
 
 export async function searchBooks(query: string): Promise<BookSearchResult[]> {
   const olUrl = `${BASE}/search.json?q=${encodeURIComponent(query)}&fields=title,author_name,key,cover_i,first_publish_year,series_name,series_key,series_position&limit=10`
@@ -35,7 +36,7 @@ export async function searchBooks(query: string): Promise<BookSearchResult[]> {
   // Only call GB if OL has no series data — GB fills gaps (e.g. series OL doesn't track)
   const olHasSeries = results.some((r) => r.series)
   if (!olHasSeries) {
-    const gbUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=20`
+    const gbUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=20${GB_KEY}`
     const gbRes = await fetch(gbUrl, { next: { revalidate: 3600 } }).catch(() => null)
     if (gbRes?.ok) {
       const gbByTitle = new Map<string, { series: string; number: string | null }>()
@@ -233,7 +234,7 @@ async function fetchOLCoverByIsbn(isbn: string): Promise<string | null> {
 
 async function fetchGoogleBooksInfo(isbn: string): Promise<{ language: string | null; coverUrl: string | null }> {
   try {
-    const url = `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&fields=items(volumeInfo/language,volumeInfo/imageLinks)&maxResults=1`
+    const url = `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&fields=items(volumeInfo/language,volumeInfo/imageLinks)&maxResults=1${GB_KEY}`
     const res = await fetch(url, { next: { revalidate: 86400 } })
     if (!res.ok) return { language: null, coverUrl: null }
     const data = await res.json()
