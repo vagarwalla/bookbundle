@@ -224,7 +224,7 @@ const OL_TO_GB_LANG: Record<string, string> = {
 async function fetchOLCoverByIsbn(isbn: string): Promise<string | null> {
   try {
     const url = `${COVERS}/b/isbn/${isbn}-M.jpg?default=false`
-    const res = await fetch(url, { next: { revalidate: 86400 } })
+    const res = await fetch(url, { next: { revalidate: 3600 } })
     if (!res.ok) return null
     return `${COVERS}/b/isbn/${isbn}-M.jpg`
   } catch {
@@ -238,12 +238,14 @@ async function fetchGoogleBooksInfo(isbn: string): Promise<GBInfo> {
   const empty: GBInfo = { language: null, coverUrl: null, publishYear: null, publisher: null, format: null }
   try {
     const url = `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&fields=items(volumeInfo/language,volumeInfo/imageLinks,volumeInfo/publishedDate,volumeInfo/publisher,volumeInfo/printType)&maxResults=1${GB_KEY}`
-    const res = await fetch(url, { next: { revalidate: 86400 } })
+    const res = await fetch(url, { next: { revalidate: 3600 } })
     if (!res.ok) return empty
     const data = await res.json()
     const info = data.items?.[0]?.volumeInfo
     if (!info) return empty
-    const thumbnail = (info.imageLinks?.thumbnail as string | undefined)
+    const rawThumb = (info.imageLinks?.thumbnail as string | undefined)
+      ?? (info.imageLinks?.smallThumbnail as string | undefined)
+    const thumbnail = rawThumb
       ?.replace('http://', 'https://')
       .replace('&zoom=1', '&zoom=0') ?? null
     const yearMatch = (info.publishedDate as string | undefined)?.match(/\b(1\d{3}|20\d{2})\b/)
