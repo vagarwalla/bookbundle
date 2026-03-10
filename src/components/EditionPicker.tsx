@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { Loader2, Check } from 'lucide-react'
+import { Loader2, Check, Star } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import type { BookSearchResult, Edition, Format } from '@/lib/types'
@@ -87,14 +87,31 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
     [coverGroups, formatFilter]
   )
 
+  const sorted = useMemo(() => {
+    const earliestYear = (group: CoverGroup) =>
+      group.editions.reduce((min, e) =>
+        e.publish_year && (min === null || e.publish_year < min) ? e.publish_year : min
+      , null as number | null)
+    return [...filtered].sort((a, b) => {
+      const ya = earliestYear(a)
+      const yb = earliestYear(b)
+      if (ya === null && yb === null) return 0
+      if (ya === null) return 1
+      if (yb === null) return -1
+      return ya - yb
+    })
+  }, [filtered])
+
+  const firstEditionKey = sorted[0]?.key ?? null
+
   function handleConfirm() {
-    const group = filtered.find((g) => g.key === selectedKey)
+    const group = sorted.find((g) => g.key === selectedKey)
     if (!group) return
     onConfirm(bestEdition(group, formatFilter))
     onOpenChange(false)
   }
 
-  const selectedGroup = filtered.find((g) => g.key === selectedKey) ?? null
+  const selectedGroup = sorted.find((g) => g.key === selectedKey) ?? null
   const previewEdition = selectedGroup ? bestEdition(selectedGroup, formatFilter) : null
 
   return (
@@ -144,9 +161,10 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-5 py-2">
-              {filtered.map((group) => {
+              {sorted.map((group) => {
                 const rep = bestEdition(group, formatFilter)
                 const isSelected = group.key === selectedKey
+                const isFirst = group.key === firstEditionKey
                 return (
                   <button
                     key={group.key}
@@ -158,6 +176,16 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
                     {isSelected && (
                       <div className="absolute top-2 right-2 bg-primary rounded-full p-1 z-10">
                         <Check className="h-3.5 w-3.5 text-white" />
+                      </div>
+                    )}
+                    {isFirst && !isSelected && (
+                      <div className="absolute top-2 right-2 bg-amber-400 rounded-full p-1 z-10" title="First edition">
+                        <Star className="h-3.5 w-3.5 text-white fill-white" />
+                      </div>
+                    )}
+                    {isFirst && isSelected && (
+                      <div className="absolute top-2 left-2 bg-amber-400 rounded-full p-1 z-10" title="First edition">
+                        <Star className="h-3.5 w-3.5 text-white fill-white" />
                       </div>
                     )}
                     <div className="aspect-[2/3] bg-muted rounded overflow-hidden mb-3 min-h-[240px]">
