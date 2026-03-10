@@ -27,12 +27,14 @@ function ListingRow({ listing }: { listing: Listing }) {
       href={listing.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex items-center justify-between gap-2 py-1 px-2 rounded hover:bg-muted/60 transition-colors group text-xs"
+      className="flex items-center gap-2 py-1 px-2 rounded hover:bg-muted/60 transition-colors group text-xs"
     >
-      <span className="truncate text-muted-foreground group-hover:text-foreground">
+      <span className="truncate text-muted-foreground group-hover:text-foreground flex-1">
         {listing.seller_name}
       </span>
-      <span className="shrink-0 text-muted-foreground">{listing.condition.replace('Used - ', '')}</span>
+      <span className="shrink-0 px-1.5 py-0.5 rounded bg-muted text-muted-foreground capitalize">
+        {listing.condition.replace('Used - ', '')}
+      </span>
       <span className="shrink-0 font-medium tabular-nums">
         ${listing.price.toFixed(2)}
         {listing.shipping_base > 0
@@ -46,7 +48,7 @@ function ListingRow({ listing }: { listing: Listing }) {
 
 function BookListings({ item, listings }: { item: CartItem; listings: Listing[] }) {
   const [expanded, setExpanded] = useState(false)
-  const sorted = [...listings].sort((a, b) => totalCost(a) - totalCost(b))
+  const sorted = [...listings].sort((a, b) => totalCost(a) - totalCost(b)).slice(0, 20)
   const preview = sorted.slice(0, 3)
   const rest = sorted.slice(3)
 
@@ -54,21 +56,21 @@ function BookListings({ item, listings }: { item: CartItem; listings: Listing[] 
     <div className="space-y-0.5">
       <div className="flex items-center justify-between text-xs mb-0.5">
         <span className="font-medium truncate">{item.title}</span>
-        <span className="shrink-0 text-green-700 ml-2">{listings.length} listing{listings.length !== 1 ? 's' : ''}</span>
+        <div className="flex items-center gap-2 shrink-0 ml-2">
+          {rest.length > 0 && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
+            >
+              {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              {expanded ? 'Show less' : `${rest.length} more listing${rest.length !== 1 ? 's' : ''}`}
+            </button>
+          )}
+          <span className="text-green-700">{listings.length} listing{listings.length !== 1 ? 's' : ''}</span>
+        </div>
       </div>
       {preview.map((l) => <ListingRow key={l.listing_id} listing={l} />)}
-      {rest.length > 0 && (
-        <>
-          {expanded && rest.map((l) => <ListingRow key={l.listing_id} listing={l} />)}
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground pl-2 pt-0.5"
-          >
-            {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            {expanded ? 'Show less' : `${rest.length} more listing${rest.length !== 1 ? 's' : ''}`}
-          </button>
-        </>
-      )}
+      {expanded && rest.map((l) => <ListingRow key={l.listing_id} listing={l} />)}
     </div>
   )
 }
@@ -135,7 +137,10 @@ export function OptimizationPanel({ items, cartSlug }: Props) {
     const listings = [...new Map(
       candidateIsbns.flatMap((isbn) => listingsByIsbn[isbn] ?? [])
         .map((l) => [l.listing_id, l])
-    ).values()]
+    ).values()].filter((l) =>
+      (item.conditions ?? []).includes(l.condition_normalized) &&
+      (item.max_price == null || l.price <= item.max_price)
+    )
     return { item, listings }
   })
   const missingItems = itemListingCounts.filter((x) => x.listings.length === 0)

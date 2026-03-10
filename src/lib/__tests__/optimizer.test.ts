@@ -279,6 +279,109 @@ describe('optimize', () => {
     expect(result.savings).toBeGreaterThanOrEqual(0)
   })
 
+  // ── Condition-filtering regression tests ─────────────────────────────────────
+  // These cover the bug where lower-condition listings were shown even when the
+  // user's condition settings required "new" or "like new" only.
+
+  it('does not assign a very_good listing when conditions = [new, like_new]', () => {
+    const item = makeItem({ id: 'i1', isbn_preferred: 'isbn-1', conditions: ['new', 'like_new'] })
+    const listings = new Map([
+      ['isbn-1', [
+        makeListing({ seller_id: 'A', isbn: 'isbn-1', price: 3.00, condition: 'Very Good', condition_normalized: 'very_good' }),
+        makeListing({ seller_id: 'B', isbn: 'isbn-1', price: 5.00, condition: 'Like New',  condition_normalized: 'like_new' }),
+      ]],
+    ])
+    const result = optimize([item], listings)
+    expect(result.groups).toHaveLength(1)
+    // Must pick the like_new listing, not the cheaper very_good one
+    expect(result.groups[0].seller_id).toBe('B')
+    expect(result.groups[0].assignments[0].listing.condition_normalized).toBe('like_new')
+  })
+
+  it('does not assign a good listing when conditions = [new, like_new]', () => {
+    const item = makeItem({ id: 'i1', isbn_preferred: 'isbn-1', conditions: ['new', 'like_new'] })
+    const listings = new Map([
+      ['isbn-1', [
+        makeListing({ seller_id: 'A', isbn: 'isbn-1', price: 2.00, condition: 'Good',     condition_normalized: 'good' }),
+        makeListing({ seller_id: 'B', isbn: 'isbn-1', price: 9.00, condition: 'New',      condition_normalized: 'new' }),
+      ]],
+    ])
+    const result = optimize([item], listings)
+    expect(result.groups).toHaveLength(1)
+    expect(result.groups[0].assignments[0].listing.condition_normalized).toBe('new')
+  })
+
+  it('does not assign a good or very_good listing when conditions = [new]', () => {
+    const item = makeItem({ id: 'i1', isbn_preferred: 'isbn-1', conditions: ['new'] })
+    const listings = new Map([
+      ['isbn-1', [
+        makeListing({ seller_id: 'A', isbn: 'isbn-1', price: 1.00, condition_normalized: 'good' }),
+        makeListing({ seller_id: 'B', isbn: 'isbn-1', price: 2.00, condition_normalized: 'very_good' }),
+        makeListing({ seller_id: 'C', isbn: 'isbn-1', price: 3.00, condition_normalized: 'like_new' }),
+        makeListing({ seller_id: 'D', isbn: 'isbn-1', price: 4.00, condition_normalized: 'new' }),
+      ]],
+    ])
+    const result = optimize([item], listings)
+    expect(result.groups).toHaveLength(1)
+    expect(result.groups[0].assignments[0].listing.condition_normalized).toBe('new')
+  })
+
+  it('does not assign a good listing when conditions = [like_new]', () => {
+    const item = makeItem({ id: 'i1', isbn_preferred: 'isbn-1', conditions: ['like_new'] })
+    const listings = new Map([
+      ['isbn-1', [
+        makeListing({ seller_id: 'A', isbn: 'isbn-1', price: 1.00, condition_normalized: 'good' }),
+        makeListing({ seller_id: 'B', isbn: 'isbn-1', price: 2.00, condition_normalized: 'very_good' }),
+        makeListing({ seller_id: 'C', isbn: 'isbn-1', price: 9.00, condition_normalized: 'like_new' }),
+      ]],
+    ])
+    const result = optimize([item], listings)
+    expect(result.groups).toHaveLength(1)
+    expect(result.groups[0].assignments[0].listing.condition_normalized).toBe('like_new')
+  })
+
+  it('does not assign a good listing when conditions = [very_good]', () => {
+    const item = makeItem({ id: 'i1', isbn_preferred: 'isbn-1', conditions: ['very_good'] })
+    const listings = new Map([
+      ['isbn-1', [
+        makeListing({ seller_id: 'A', isbn: 'isbn-1', price: 1.00, condition_normalized: 'good' }),
+        makeListing({ seller_id: 'B', isbn: 'isbn-1', price: 8.00, condition_normalized: 'very_good' }),
+      ]],
+    ])
+    const result = optimize([item], listings)
+    expect(result.groups).toHaveLength(1)
+    expect(result.groups[0].assignments[0].listing.condition_normalized).toBe('very_good')
+  })
+
+  it('every assigned listing has a condition_normalized that is in the item conditions array', () => {
+    // Multi-item cart — ensures no condition leak across any assignment
+    const items = [
+      makeItem({ id: 'i1', isbn_preferred: 'isbn-1', conditions: ['new', 'like_new'] }),
+      makeItem({ id: 'i2', isbn_preferred: 'isbn-2', conditions: ['very_good'] }),
+      makeItem({ id: 'i3', isbn_preferred: 'isbn-3', conditions: ['good'] }),
+    ]
+    const listings = new Map([
+      ['isbn-1', [
+        makeListing({ seller_id: 'A', isbn: 'isbn-1', price: 3.00, condition_normalized: 'good' }),
+        makeListing({ seller_id: 'A', isbn: 'isbn-1', price: 5.00, condition_normalized: 'like_new' }),
+      ]],
+      ['isbn-2', [
+        makeListing({ seller_id: 'A', isbn: 'isbn-2', price: 4.00, condition_normalized: 'good' }),
+        makeListing({ seller_id: 'B', isbn: 'isbn-2', price: 6.00, condition_normalized: 'very_good' }),
+      ]],
+      ['isbn-3', [
+        makeListing({ seller_id: 'A', isbn: 'isbn-3', price: 2.00, condition_normalized: 'good' }),
+        makeListing({ seller_id: 'B', isbn: 'isbn-3', price: 7.00, condition_normalized: 'very_good' }),
+      ]],
+    ])
+    const result = optimize(items, listings)
+    for (const group of result.groups) {
+      for (const { item, listing } of group.assignments) {
+        expect(item.conditions).toContain(listing.condition_normalized)
+      }
+    }
+  })
+
   it('groups are sorted by number of assignments descending', () => {
     const items = [
       makeItem({ id: 'i1', isbn_preferred: 'isbn-1' }),
