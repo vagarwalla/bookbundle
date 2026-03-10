@@ -397,7 +397,7 @@ describe('getEditions', () => {
     expect(editions).toHaveLength(2)
   })
 
-  it('skips editions with no cover when language filter is active', async () => {
+  it('includes editions with no cover when language filter is active', async () => {
     const mockResponse = {
       entries: [{
         title: 'Dune',
@@ -416,7 +416,8 @@ describe('getEditions', () => {
     )
 
     const editions = await getEditions('/works/OL102749W', 'eng')
-    expect(editions).toHaveLength(0)
+    expect(editions).toHaveLength(1)
+    expect(editions[0].cover_url).toBeNull()
   })
 
   it('sends untagged editions through Google Books language verification', async () => {

@@ -234,7 +234,7 @@ function buildEdition(
   isbn: string,
   entry: Record<string, unknown>,
   coverId: number | null,
-  coverUrl: string,
+  coverUrl: string | null,
 ): Edition {
   const yearMatch = (entry.publish_date as string | undefined)?.match(/\b(1\d{3}|20\d{2})\b/)
   const publishYear = yearMatch ? parseInt(yearMatch[1]) : null
@@ -261,7 +261,7 @@ export async function getEditions(workId: string, language = 'eng'): Promise<Edi
   const data = await res.json()
 
   const confirmed: Edition[] = []
-  const needsVerification: Array<{ isbn: string; entry: Record<string, unknown>; coverId: number | null; coverUrl: string }> = []
+  const needsVerification: Array<{ isbn: string; entry: Record<string, unknown>; coverId: number | null; coverUrl: string | null }> = []
   const seenIsbns = new Set<string>()
 
   for (const entry of data.entries || []) {
@@ -278,27 +278,26 @@ export async function getEditions(workId: string, language = 'eng'): Promise<Edi
     const coverId = rawCoverId && rawCoverId > 0 ? rawCoverId : null
     const coverUrl = coverId ? `${COVERS}/b/id/${coverId}-M.jpg` : null
 
-    if (language && !coverUrl) continue
-
     if (language) {
       const langs = (entry.languages as { key: string }[]) || []
       if (langs.length > 0) {
         // OL has language data — trust it
         if (!langs.some((l) => l.key === `/languages/${language}`)) continue
-        confirmed.push(buildEdition(isbn, entry, coverId, coverUrl!))
+        confirmed.push(buildEdition(isbn, entry, coverId, coverUrl))
       } else {
         // No OL language data — queue for Google Books verification
-        needsVerification.push({ isbn, entry, coverId, coverUrl: coverUrl! })
+        needsVerification.push({ isbn, entry, coverId, coverUrl })
       }
     } else {
-      confirmed.push(buildEdition(isbn, entry, coverId, coverUrl!))
+      confirmed.push(buildEdition(isbn, entry, coverId, coverUrl))
     }
   }
 
-  // Verify untagged editions via Google Books (cap at 8 to stay fast)
+  // Verify untagged editions via Google Books (check first 8, give benefit of the doubt for the rest)
   if (language && needsVerification.length > 0) {
     const gbLangCode = OL_TO_GB_LANG[language] ?? language.slice(0, 2)
     const toCheck = needsVerification.slice(0, 8)
+    const rest = needsVerification.slice(8)
     const gbLanguages = await Promise.all(toCheck.map(({ isbn }) => fetchGoogleBooksLanguage(isbn)))
     for (let i = 0; i < toCheck.length; i++) {
       const gbLang = gbLanguages[i]
@@ -307,6 +306,10 @@ export async function getEditions(workId: string, language = 'eng'): Promise<Edi
         const { isbn, entry, coverId, coverUrl } = toCheck[i]
         confirmed.push(buildEdition(isbn, entry, coverId, coverUrl))
       }
+    }
+    // Editions beyond the 8 we verified: include with benefit of the doubt
+    for (const { isbn, entry, coverId, coverUrl } of rest) {
+      confirmed.push(buildEdition(isbn, entry, coverId, coverUrl))
     }
   }
 

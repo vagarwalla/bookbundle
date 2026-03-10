@@ -21,7 +21,7 @@ const FORMAT_LABELS: Record<Format, string> = {
 
 type CoverGroup = {
   key: string
-  cover_url: string
+  cover_url: string | null
   editions: Edition[]
   formats: Format[]
 }
@@ -29,15 +29,18 @@ type CoverGroup = {
 function groupEditionsBycover(editions: Edition[]): CoverGroup[] {
   const map = new Map<string, CoverGroup>()
   for (const edition of editions) {
-    if (!edition.cover_url) continue
-    const key = edition.cover_id != null ? `id:${edition.cover_id}` : `url:${edition.cover_url}`
-    if (!map.has(key)) {
-      map.set(key, { key, cover_url: edition.cover_url, editions: [], formats: [] })
-    }
-    const group = map.get(key)!
-    group.editions.push(edition)
-    if (!group.formats.includes(edition.format)) {
-      group.formats.push(edition.format)
+    if (edition.cover_url) {
+      const key = edition.cover_id != null ? `id:${edition.cover_id}` : `url:${edition.cover_url}`
+      if (!map.has(key)) {
+        map.set(key, { key, cover_url: edition.cover_url, editions: [], formats: [] })
+      }
+      const group = map.get(key)!
+      group.editions.push(edition)
+      if (!group.formats.includes(edition.format)) group.formats.push(edition.format)
+    } else {
+      // No cover — give each edition its own group keyed by ISBN
+      const key = `no-cover:${edition.isbn}`
+      map.set(key, { key, cover_url: null, editions: [edition], formats: edition.format !== 'any' ? [edition.format] : [] })
     }
   }
   return Array.from(map.values())
@@ -412,12 +415,18 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
                             </div>
                           )}
 
-                          <div className="aspect-[2/3] bg-muted rounded overflow-hidden mb-3">
-                            <img
-                              src={group.cover_url}
-                              alt={rep.title}
-                              className="w-full h-full object-cover"
-                            />
+                          <div className="aspect-[2/3] bg-muted rounded overflow-hidden mb-3 flex items-center justify-center">
+                            {group.cover_url ? (
+                              <img
+                                src={group.cover_url}
+                                alt={rep.title}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="text-center px-2">
+                                <div className="text-[10px] text-muted-foreground leading-tight line-clamp-3">{rep.publisher ?? 'No cover'}</div>
+                              </div>
+                            )}
                           </div>
                           <div className="text-sm leading-snug space-y-1 min-h-[72px]">
                             {rep.edition_name && (
