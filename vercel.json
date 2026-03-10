@@ -5,6 +5,9 @@
     },
     "src/app/api/cover-hashes/route.ts": {
       "maxDuration": 60
+    },
+    "src/app/api/cover-groups/route.ts": {
+      "maxDuration": 60
     }
   }
 }
