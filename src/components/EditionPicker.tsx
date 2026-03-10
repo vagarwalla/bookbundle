@@ -5,6 +5,7 @@ import { Loader2, Star, ChevronDown, X } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import type { BookSearchResult, Edition, Format } from '@/lib/types'
+import { clusterByHash } from '@/lib/clustering'
 
 interface Props {
   book: BookSearchResult | null
@@ -158,6 +159,8 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
   const [yearFilter, setYearFilter] = useState<Set<number>>(new Set())
   const [titleFilter, setTitleFilter] = useState<Set<string>>(new Set())
   const [groupBy, setGroupBy] = useState<'publisher' | 'visual'>('publisher')
+  const [hashMap, setHashMap] = useState<Map<string, bigint>>(new Map())
+  const [hashesLoading, setHashesLoading] = useState(false)
 
   useEffect(() => {
     if (!book || !open) return
@@ -167,6 +170,8 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
     setPublisherFilter(new Set())
     setYearFilter(new Set())
     setTitleFilter(new Set())
+    setHashMap(new Map())
+    setHashesLoading(false)
     fetch(`/api/editions?workId=${encodeURIComponent(book.work_id)}&language=${language}`)
       .then((r) => r.json())
       .then((data) => {
@@ -248,15 +253,69 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
     return Array.from(map.values())
   }, [sorted, formatFilter])
 
-  // Visual view: flat grid sorted by cover_id so same-scan editions are adjacent.
-  // No section headers — each card is already a unique visual (same cover_id = one card).
-  const visualSorted = useMemo(() => {
-    return [...filtered].sort((a, b) => {
-      const idA = a.key.startsWith('id:') ? parseInt(a.key.slice(3), 10) : Infinity
-      const idB = b.key.startsWith('id:') ? parseInt(b.key.slice(3), 10) : Infinity
-      return idA - idB
+  useEffect(() => {
+    if (groupBy !== 'visual' || coverGroups.length === 0 || hashMap.size > 0 || hashesLoading) return
+    const coverUrls = [...new Set(
+      coverGroups.map((g) => g.cover_url).filter((u): u is string => u !== null)
+    )]
+    if (coverUrls.length === 0) return
+
+    setHashesLoading(true)
+    fetch('/api/cover-hashes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ coverUrls }),
     })
-  }, [filtered])
+      .then((r) => r.json())
+      .then((data: Record<string, string>) => {
+        const map = new Map<string, bigint>()
+        for (const [url, hex] of Object.entries(data)) {
+          try { map.set(url, BigInt('0x' + hex)) } catch { /* skip malformed */ }
+        }
+        setHashMap(map)
+        setHashesLoading(false)
+      })
+      .catch(() => setHashesLoading(false))
+  }, [groupBy, coverGroups, hashMap.size, hashesLoading])
+
+  const visualSorted = useMemo(() => {
+    if (hashMap.size === 0) {
+      // No hashes yet — sort by cover_id as fallback
+      return [...filtered].sort((a, b) => {
+        const idA = a.key.startsWith('id:') ? parseInt(a.key.slice(3), 10) : Infinity
+        const idB = b.key.startsWith('id:') ? parseInt(b.key.slice(3), 10) : Infinity
+        return idA - idB
+      })
+    }
+
+    // Build cluster map: coverUrl → representative URL
+    const urlToCluster = clusterByHash(hashMap, 10)
+
+    // Assign each group a cluster representative
+    const withCluster = filtered.map((group) => {
+      const rep = group.cover_url ? (urlToCluster.get(group.cover_url) ?? group.cover_url) : null
+      return { group, clusterRep: rep }
+    })
+
+    // Sort: group by cluster (same rep adjacent), clusters ordered by earliest cover_id in cluster
+    const clusterOrder = new Map<string | null, number>()
+    for (const { group, clusterRep } of withCluster) {
+      if (clusterOrder.has(clusterRep)) continue
+      const coverId = group.key.startsWith('id:') ? parseInt(group.key.slice(3), 10) : Infinity
+      clusterOrder.set(clusterRep, coverId)
+    }
+
+    return [...withCluster]
+      .sort((a, b) => {
+        const orderA = clusterOrder.get(a.clusterRep) ?? Infinity
+        const orderB = clusterOrder.get(b.clusterRep) ?? Infinity
+        if (orderA !== orderB) return orderA - orderB
+        const idA = a.group.key.startsWith('id:') ? parseInt(a.group.key.slice(3), 10) : Infinity
+        const idB = b.group.key.startsWith('id:') ? parseInt(b.group.key.slice(3), 10) : Infinity
+        return idA - idB
+      })
+      .map(({ group }) => group)
+  }, [hashMap, filtered])
 
   const hasActiveFilters = publisherFilter.size > 0 || yearFilter.size > 0 || titleFilter.size > 0
 
@@ -370,10 +429,13 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
                 Publisher
               </button>
               <button
-                className={`px-2.5 py-1.5 transition-colors ${groupBy === 'visual' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'}`}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 transition-colors ${groupBy === 'visual' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'}`}
                 onClick={() => setGroupBy('visual')}
               >
                 Visual
+                {groupBy === 'visual' && hashesLoading && (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                )}
               </button>
             </div>
             {!loading && (
@@ -432,17 +494,14 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
                               <img src={group.cover_url} alt={rep.title} className="w-full h-full object-cover" />
                             ) : (
                               <div className="text-center px-2">
-                                <div className="text-xl font-semibold text-muted-foreground leading-tight">No cover art found</div>
+                                <div className="text-sm font-medium text-muted-foreground">No cover art found</div>
                               </div>
                             )}
                           </div>
                           <div className="text-sm leading-snug space-y-1 min-h-[72px]">
-                            {(rep.edition_name || rep.title) && <div className="font-medium text-foreground line-clamp-2">{rep.edition_name || rep.title}</div>}
+                            {rep.edition_name && <div className="font-medium text-foreground line-clamp-2">{rep.edition_name}</div>}
                             {rep.publisher && <div className="text-muted-foreground line-clamp-2">{rep.publisher}</div>}
-                            <div className="flex justify-between items-baseline gap-1">
-                              <span className="text-muted-foreground">{rep.publish_year ?? ''}</span>
-                              <span className="text-[10px] text-muted-foreground/60 shrink-0">{rep.isbn}</span>
-                            </div>
+                            <div className="text-muted-foreground">{rep.publish_year ?? ''}</div>
                             {rep.pages && <div className="text-muted-foreground text-xs">{rep.pages} pp</div>}
                             <div className="flex flex-wrap gap-1 pt-0.5">
                               {group.formats.filter((f) => f !== 'any').map((f) => (
@@ -458,6 +517,10 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
                   </div>
                 </div>
               ))}
+            </div>
+          ) : hashesLoading && hashMap.size === 0 ? (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 py-2">
@@ -490,18 +553,15 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
                       {group.cover_url ? (
                         <img src={group.cover_url} alt={rep.title} className="w-full h-full object-cover" />
                       ) : (
-                        <div className="text-center px-2 space-y-1">
-                          <div className="text-xl font-semibold text-muted-foreground leading-tight">No cover art found</div>
+                        <div className="text-center px-2">
+                          <div className="text-sm font-medium text-muted-foreground">No cover art found</div>
                         </div>
                       )}
                     </div>
                     <div className="text-sm leading-snug space-y-1 min-h-[72px]">
-                      {(rep.edition_name || rep.title) && <div className="font-medium text-foreground line-clamp-2">{rep.edition_name || rep.title}</div>}
-                      {rep.publisher && <div className="text-muted-foreground line-clamp-2">{rep.publisher}</div>}
-                      <div className="flex justify-between items-baseline gap-1">
-                        <span className="text-muted-foreground">{rep.publish_year ?? ''}</span>
-                        <span className="text-[10px] text-muted-foreground/60 shrink-0">{rep.isbn}</span>
-                      </div>
+                      {rep.edition_name && <div className="font-medium text-foreground line-clamp-2">{rep.edition_name}</div>}
+                      {!group.cover_url && rep.publisher && <div className="text-muted-foreground line-clamp-2">{rep.publisher}</div>}
+                      <div className="text-muted-foreground">{rep.publish_year ?? ''}</div>
                       {rep.pages && <div className="text-muted-foreground text-xs">{rep.pages} pp</div>}
                       <div className="flex flex-wrap gap-1 pt-0.5">
                         {group.formats.filter((f) => f !== 'any').map((f) => (
