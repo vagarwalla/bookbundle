@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { Loader2, Check, Star, ChevronDown, X } from 'lucide-react'
+import { Loader2, Star, ChevronDown, X } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import type { BookSearchResult, Edition, Format } from '@/lib/types'
@@ -10,7 +10,7 @@ interface Props {
   book: BookSearchResult | null
   open: boolean
   onOpenChange: (v: boolean) => void
-  onConfirm: (edition: Edition) => void
+  onConfirm: (editions: Edition[]) => void
 }
 
 const FORMAT_LABELS: Record<Format, string> = {
@@ -48,7 +48,6 @@ function bestEdition(group: CoverGroup, formatFilter: Format): Edition {
     const exact = group.editions.find((e) => e.format === formatFilter)
     if (exact) return exact
   }
-  // Prefer editions with more metadata
   return group.editions.sort((a, b) => {
     const aScore = (a.edition_name ? 1 : 0) + (a.pages ? 1 : 0) + (a.publisher ? 1 : 0)
     const bScore = (b.edition_name ? 1 : 0) + (b.pages ? 1 : 0) + (b.publisher ? 1 : 0)
@@ -61,13 +60,11 @@ function MultiSelectDropdown<T extends string | number>({
   options,
   selected,
   onChange,
-  renderOption,
 }: {
   label: string
   options: T[]
   selected: Set<T>
   onChange: (next: Set<T>) => void
-  renderOption?: (v: T) => React.ReactNode
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -112,7 +109,7 @@ function MultiSelectDropdown<T extends string | number>({
                   onClick={() => onChange(new Set())}
                   className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground mb-0.5"
                 >
-                  <X className="h-3 w-3" /> Clear selection
+                  <X className="h-3 w-3" /> Clear
                 </button>
               )}
               {options.map((opt) => {
@@ -133,9 +130,9 @@ function MultiSelectDropdown<T extends string | number>({
                         isSelected ? 'bg-primary border-primary' : 'border-input'
                       }`}
                     >
-                      {isSelected && <Check className="h-2.5 w-2.5 text-white" />}
+                      {isSelected && <X className="h-2.5 w-2.5 text-white" />}
                     </div>
-                    <span className="truncate">{renderOption ? renderOption(opt) : String(opt)}</span>
+                    <span className="truncate">{String(opt)}</span>
                   </button>
                 )
               })}
@@ -152,7 +149,8 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
   const [loading, setLoading] = useState(false)
   const [formatFilter, setFormatFilter] = useState<Format>('any')
   const [language, setLanguage] = useState('eng')
-  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  // Ordered list of selected cover-group keys: index 0 = primary/top pick
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([])
   const [publisherFilter, setPublisherFilter] = useState<Set<string>>(new Set())
   const [yearFilter, setYearFilter] = useState<Set<number>>(new Set())
   const [titleFilter, setTitleFilter] = useState<Set<string>>(new Set())
@@ -161,7 +159,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
     if (!book || !open) return
     setLoading(true)
     setEditions([])
-    setSelectedKey(null)
+    setSelectedKeys([])
     setPublisherFilter(new Set())
     setYearFilter(new Set())
     setTitleFilter(new Set())
@@ -175,7 +173,6 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
 
   const coverGroups = useMemo(() => groupEditionsBycover(editions), [editions])
 
-  // Derive available publishers and years from all groups (before filtering)
   const availablePublishers = useMemo(() => {
     const set = new Set<string>()
     for (const group of coverGroups) {
@@ -203,7 +200,6 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
         if (e.title) set.add(e.title)
       }
     }
-    // Only expose the filter if there are multiple distinct titles
     return set.size > 1 ? Array.from(set).sort((a, b) => a.localeCompare(b)) : []
   }, [coverGroups])
 
@@ -234,6 +230,20 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
 
   const firstEditionKey = sorted[0]?.key ?? null
 
+  const publisherSections = useMemo(() => {
+    const normalizePublisher = (p: string | null) =>
+      p?.trim().toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ') ?? ''
+    const map = new Map<string, { label: string; groups: CoverGroup[] }>()
+    for (const group of sorted) {
+      const rep = bestEdition(group, formatFilter)
+      const norm = normalizePublisher(rep.publisher)
+      const key = norm || 'unknown'
+      if (!map.has(key)) map.set(key, { label: rep.publisher || 'Unknown publisher', groups: [] })
+      map.get(key)!.groups.push(group)
+    }
+    return Array.from(map.values())
+  }, [sorted, formatFilter])
+
   const hasActiveFilters = publisherFilter.size > 0 || yearFilter.size > 0 || titleFilter.size > 0
 
   function clearAllFilters() {
@@ -242,23 +252,42 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
     setTitleFilter(new Set())
   }
 
+  function toggleCard(key: string) {
+    setSelectedKeys((prev) => {
+      if (prev.includes(key)) {
+        if (prev.length === 1) return prev // can't deselect the only selection
+        return prev.filter((k) => k !== key)
+      }
+      return [...prev, key]
+    })
+  }
+
   function handleConfirm() {
-    const group = sorted.find((g) => g.key === selectedKey)
-    if (!group) return
-    onConfirm(bestEdition(group, formatFilter))
+    if (selectedKeys.length === 0) return
+    const chosenEditions = selectedKeys
+      .map((key) => {
+        const group = coverGroups.find((g) => g.key === key)
+        return group ? bestEdition(group, formatFilter) : null
+      })
+      .filter((e): e is Edition => e !== null)
+    if (chosenEditions.length === 0) return
+    onConfirm(chosenEditions)
     onOpenChange(false)
   }
 
-  const selectedGroup = sorted.find((g) => g.key === selectedKey) ?? null
-  const previewEdition = selectedGroup ? bestEdition(selectedGroup, formatFilter) : null
+  const primaryKey = selectedKeys[0] ?? null
+  const selectedCount = selectedKeys.length
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl w-[90vw] p-0 overflow-hidden">
-        <div className="flex flex-col h-[min(90vh,780px)] p-4 gap-3">
+      <DialogContent className="sm:max-w-5xl w-[90vw] max-h-[90vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Choose cover — {book?.title}</DialogTitle>
+          <DialogTitle>Choose editions — {book?.title}</DialogTitle>
         </DialogHeader>
+
+        <p className="text-xs text-muted-foreground shrink-0 -mt-1">
+          Pick one or more editions you&apos;d accept. First picked = top preference. All are searched for the best price.
+        </p>
 
         {/* Filters row 1: format + language */}
         <div className="flex flex-wrap gap-2 shrink-0">
@@ -336,76 +365,109 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
               No editions found for this filter.
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-5 py-2">
-              {sorted.map((group) => {
-                const rep = bestEdition(group, formatFilter)
-                const isSelected = group.key === selectedKey
-                const isFirst = group.key === firstEditionKey
-                return (
-                  <button
-                    key={group.key}
-                    onClick={() => setSelectedKey(group.key)}
-                    className={`relative rounded-lg p-2 text-left transition-all border-2 ${
-                      isSelected ? 'border-primary bg-primary/5' : 'border-transparent hover:border-border'
-                    }`}
-                  >
-                    {isSelected && (
-                      <div className="absolute top-2 right-2 bg-primary rounded-full p-1 z-10">
-                        <Check className="h-3.5 w-3.5 text-white" />
-                      </div>
-                    )}
-                    {isFirst && !isSelected && (
-                      <div className="absolute top-2 right-2 bg-amber-400 rounded-full p-1 z-10" title="First edition">
-                        <Star className="h-3.5 w-3.5 text-white fill-white" />
-                      </div>
-                    )}
-                    {isFirst && isSelected && (
-                      <div className="absolute top-2 left-2 bg-amber-400 rounded-full p-1 z-10" title="First edition">
-                        <Star className="h-3.5 w-3.5 text-white fill-white" />
-                      </div>
-                    )}
-                    <div className="aspect-[2/3] bg-muted rounded overflow-hidden mb-3 min-h-[240px]">
-                      <img
-                        src={group.cover_url}
-                        alt={rep.title}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <div className="text-sm leading-snug space-y-1">
-                      {rep.edition_name && (
-                        <div className="font-medium text-foreground truncate">{rep.edition_name}</div>
-                      )}
-                      <div className="text-muted-foreground truncate">
-                        {rep.publisher || 'Unknown'}{rep.publish_year ? ` · ${rep.publish_year}` : ''}
-                      </div>
-                      {rep.pages && (
-                        <div className="text-muted-foreground text-xs">{rep.pages} pp</div>
-                      )}
-                      <div className="flex flex-wrap gap-1 pt-0.5">
-                        {group.formats.filter((f) => f !== 'any').map((f) => (
-                          <span key={f} className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground capitalize">
-                            {f === 'hardcover' ? 'HC' : 'PB'}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </button>
-                )
-              })}
+            <div className="space-y-6 py-2">
+              {publisherSections.map(({ label, groups }) => (
+                <div key={label}>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 px-1">
+                    {label}
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                    {groups.map((group) => {
+                      const rep = bestEdition(group, formatFilter)
+                      const selIdx = selectedKeys.indexOf(group.key)
+                      const isSelected = selIdx !== -1
+                      const isPrimary = selIdx === 0
+                      const isFirstEdition = group.key === firstEditionKey
+
+                      return (
+                        <button
+                          key={group.key}
+                          onClick={() => toggleCard(group.key)}
+                          className={`relative rounded-lg p-2 text-left transition-all border-2 ${
+                            isPrimary
+                              ? 'border-amber-500 bg-amber-50'
+                              : isSelected
+                              ? 'border-primary bg-primary/5'
+                              : 'border-transparent hover:border-border'
+                          }`}
+                        >
+                          {/* Selection badge */}
+                          {isSelected && (
+                            <div
+                              className={`absolute top-2 right-2 rounded-full px-1.5 py-0.5 z-10 flex items-center gap-0.5 text-[10px] font-semibold leading-none ${
+                                isPrimary
+                                  ? 'bg-amber-500 text-white'
+                                  : 'bg-primary text-primary-foreground'
+                              }`}
+                            >
+                              {isPrimary && <Star className="h-2.5 w-2.5 fill-white" />}
+                              {isPrimary ? 'Top' : `#${selIdx + 1}`}
+                            </div>
+                          )}
+
+                          {/* First-edition star when not selected */}
+                          {isFirstEdition && !isSelected && (
+                            <div className="absolute top-2 right-2 bg-amber-400 rounded-full p-1 z-10" title="First edition">
+                              <Star className="h-3 w-3 text-white fill-white" />
+                            </div>
+                          )}
+
+                          <div className="aspect-[2/3] bg-muted rounded overflow-hidden mb-3">
+                            <img
+                              src={group.cover_url}
+                              alt={rep.title}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="text-sm leading-snug space-y-1 min-h-[72px]">
+                            {rep.edition_name && (
+                              <div className="font-medium text-foreground line-clamp-2">{rep.edition_name}</div>
+                            )}
+                            <div className="text-muted-foreground">{rep.publish_year ?? ''}</div>
+                            {rep.pages && (
+                              <div className="text-muted-foreground text-xs">{rep.pages} pp</div>
+                            )}
+                            <div className="flex flex-wrap gap-1 pt-0.5">
+                              {group.formats.filter((f) => f !== 'any').map((f) => (
+                                <span key={f} className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground capitalize">
+                                  {f === 'hardcover' ? 'HC' : 'PB'}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
 
-        <div className="flex gap-2 shrink-0 pt-2 border-t">
-          <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
-            Cancel
-          </Button>
-          <Button onClick={handleConfirm} disabled={!selectedKey} className="flex-1">
-            {previewEdition
-              ? `Add ${previewEdition.edition_name || previewEdition.publisher || 'this edition'}`
-              : 'Select a cover'}
-          </Button>
-        </div>
+        <div className="flex gap-2 shrink-0 pt-2 border-t items-center">
+          {selectedCount > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {selectedCount} edition{selectedCount !== 1 ? 's' : ''} selected
+              {primaryKey && (() => {
+                const g = coverGroups.find((g) => g.key === primaryKey)
+                const rep = g ? bestEdition(g, formatFilter) : null
+                return rep ? ` · top: ${rep.publisher || rep.publish_year || 'selected'}` : ''
+              })()}
+            </span>
+          )}
+          <div className="ml-auto flex gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirm} disabled={selectedCount === 0}>
+              {selectedCount === 0
+                ? 'Select an edition'
+                : selectedCount === 1
+                ? 'Add edition'
+                : `Add ${selectedCount} editions`}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

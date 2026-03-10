@@ -1,10 +1,76 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, RefreshCw, Minus, Plus } from 'lucide-react'
+import { X, RefreshCw, Minus, Plus, Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import type { CartItem, Condition, Format } from '@/lib/types'
+
+const OL_COVERS = 'https://covers.openlibrary.org'
+
+function EditionStrip({
+  item,
+  onRemoveCandidate,
+  onChangeCover,
+}: {
+  item: CartItem
+  onRemoveCandidate: (isbn: string) => void
+  onChangeCover: (item: CartItem) => void
+}) {
+  const candidates = item.isbns_candidates
+  if (!candidates || candidates.length < 2) return null
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap pt-1">
+      <span className="text-xs text-muted-foreground shrink-0">
+        {candidates.length} editions
+      </span>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {candidates.map((isbn, idx) => {
+          const isPrimary = idx === 0
+          const coverUrl = `${OL_COVERS}/b/isbn/${isbn}-S.jpg`
+          return (
+            <div
+              key={isbn}
+              className={`relative group shrink-0 rounded overflow-hidden border-2 transition-all ${
+                isPrimary ? 'border-amber-500 w-9 h-12' : 'border-border w-7 h-10 opacity-70 hover:opacity-100'
+              }`}
+            >
+              <img
+                src={coverUrl}
+                alt={`ISBN ${isbn}`}
+                className="w-full h-full object-cover"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+              />
+              {/* Primary badge */}
+              {isPrimary && (
+                <div className="absolute bottom-0 left-0 right-0 bg-amber-500/80 flex justify-center py-0.5">
+                  <Star className="h-2 w-2 text-white fill-white" />
+                </div>
+              )}
+              {/* Remove button for non-primary */}
+              {!isPrimary && (
+                <button
+                  onClick={() => onRemoveCandidate(isbn)}
+                  className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                  title={`Remove ISBN ${isbn}`}
+                >
+                  <X className="h-3 w-3 text-white" />
+                </button>
+              )}
+            </div>
+          )
+        })}
+        <button
+          onClick={() => onChangeCover(item)}
+          className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2 shrink-0"
+        >
+          edit
+        </button>
+      </div>
+    </div>
+  )
+}
 
 interface Props {
   item: CartItem
@@ -36,6 +102,11 @@ export function CartItemCard({ item, onUpdate, onRemove, onChangeCover, onPickCo
   useEffect(() => {
     setMaxPriceInput(item.max_price != null ? String(item.max_price) : '')
   }, [item.max_price])
+
+  async function removeCandidate(isbn: string) {
+    const updated = (item.isbns_candidates ?? []).filter((i) => i !== isbn)
+    await patch({ isbns_candidates: updated.length > 0 ? updated : null })
+  }
 
   async function patch(updates: Partial<CartItem>) {
     setSaving(true)
@@ -173,12 +244,19 @@ export function CartItemCard({ item, onUpdate, onRemove, onChangeCover, onPickCo
               />
             </div>
           </div>
-          {item.isbn_preferred && (
+          {item.isbn_preferred && (!item.isbns_candidates || item.isbns_candidates.length < 2) && (
             <Badge variant="outline" className="text-[10px] font-normal">
               ISBN {item.isbn_preferred}
             </Badge>
           )}
         </div>
+
+        {/* Edition strip — shown when multiple candidates selected */}
+        <EditionStrip
+          item={item}
+          onRemoveCandidate={removeCandidate}
+          onChangeCover={onChangeCover}
+        />
       </div>
     </div>
   )

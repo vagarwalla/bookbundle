@@ -88,7 +88,9 @@ export function OptimizationPanel({ items, cartSlug }: Props) {
     setSearched(false)
 
     try {
-      const isbns = items.map((i) => i.isbn_preferred).filter(Boolean) as string[]
+      const isbns = [...new Set(
+        items.flatMap((i) => [i.isbn_preferred, ...(i.isbns_candidates ?? [])].filter(Boolean))
+      )] as string[]
 
       const priceRes = await fetch('/api/prices', {
         method: 'POST',
@@ -128,10 +130,14 @@ export function OptimizationPanel({ items, cartSlug }: Props) {
 
   const hasUnpricedItems = items.some((i) => !i.isbn_preferred)
   const itemsWithIsbn = items.filter((i) => i.isbn_preferred)
-  const itemListingCounts = itemsWithIsbn.map((item) => ({
-    item,
-    listings: listingsByIsbn[item.isbn_preferred!] ?? [],
-  }))
+  const itemListingCounts = itemsWithIsbn.map((item) => {
+    const candidateIsbns = item.isbns_candidates ?? [item.isbn_preferred!]
+    const listings = [...new Map(
+      candidateIsbns.flatMap((isbn) => listingsByIsbn[isbn] ?? [])
+        .map((l) => [l.listing_id, l])
+    ).values()]
+    return { item, listings }
+  })
   const missingItems = itemListingCounts.filter((x) => x.listings.length === 0)
   const foundAnyListings = itemListingCounts.some((x) => x.listings.length > 0)
 
@@ -244,6 +250,11 @@ export function OptimizationPanel({ items, cartSlug }: Props) {
                       <Badge variant="secondary" className="text-[10px] shrink-0 capitalize">
                         {conditionLabel(listing.condition_normalized)}
                       </Badge>
+                      {listing.isbn !== item.isbn_preferred && (
+                        <Badge variant="outline" className="text-[10px] shrink-0 text-muted-foreground">
+                          alt. edition
+                        </Badge>
+                      )}
                     </div>
                     <span className="shrink-0 font-medium ml-2">${subtotal.toFixed(2)}</span>
                   </div>

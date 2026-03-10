@@ -22,6 +22,7 @@ function normalizeItem(item: Record<string, unknown>) {
   }
   if (!item.conditions) item.conditions = ['new', 'like_new']
   if (item.max_price === undefined) item.max_price = null
+  if (item.isbns_candidates === undefined) item.isbns_candidates = null
   return item
 }
 

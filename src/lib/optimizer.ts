@@ -18,9 +18,8 @@ export function optimize(
   }
 
   const bookOptions: BookOption[] = items.map((item) => {
-    const rawListings = item.isbn_preferred
-      ? listingsByIsbn.get(item.isbn_preferred) || []
-      : []
+    const candidateIsbns = item.isbns_candidates ?? (item.isbn_preferred ? [item.isbn_preferred] : [])
+    const rawListings = candidateIsbns.flatMap((isbn) => listingsByIsbn.get(isbn) ?? [])
     const qualified = rawListings.filter((l) =>
       (item.conditions ?? []).includes(l.condition_normalized) &&
       (item.max_price == null || l.price <= item.max_price)

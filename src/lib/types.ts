@@ -27,6 +27,7 @@ export interface CartItem {
   quantity: number
   sort_order: number
   created_at: string
+  isbns_candidates: string[] | null
 }
 
 export interface BookSearchResult {

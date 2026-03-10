@@ -13,6 +13,8 @@ import { OptimizationPanel } from '@/components/OptimizationPanel'
 import { CartDefaults } from '@/components/CartDefaults'
 import type { Cart, CartItem, BookSearchResult, Edition } from '@/lib/types'
 
+function primaryEdition(editions: Edition[]): Edition { return editions[0] }
+
 export default function CartPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params)
   const [cart, setCart] = useState<Cart | null>(null)
@@ -68,8 +70,11 @@ export default function CartPage({ params }: { params: Promise<{ slug: string }>
     setPickerOpen(true)
   }
 
-  // Edition confirmed
-  async function handleEditionConfirm(edition: Edition) {
+  // Edition confirmed — receives ordered array (index 0 = top pick)
+  async function handleEditionConfirm(editions: Edition[]) {
+    const edition = primaryEdition(editions)
+    const isbns_candidates = editions.map((e) => e.isbn)
+
     if (editingItem) {
       // Update existing item's edition
       await fetch(`/api/cart/${slug}/items/${editingItem.id}`, {
@@ -79,16 +84,17 @@ export default function CartPage({ params }: { params: Promise<{ slug: string }>
           isbn_preferred: edition.isbn,
           cover_url: edition.cover_url,
           format: edition.format,
+          isbns_candidates,
         }),
       })
       setItems((prev) =>
         prev.map((i) =>
           i.id === editingItem.id
-            ? { ...i, isbn_preferred: edition.isbn, cover_url: edition.cover_url, format: edition.format }
+            ? { ...i, isbn_preferred: edition.isbn, cover_url: edition.cover_url, format: edition.format, isbns_candidates }
             : i
         )
       )
-      toast.success('Edition updated')
+      toast.success(isbns_candidates.length > 1 ? `${isbns_candidates.length} editions saved` : 'Edition updated')
     } else if (pickerBook) {
       // Add new item
       const res = await fetch(`/api/cart/${slug}/items`, {
@@ -100,6 +106,7 @@ export default function CartPage({ params }: { params: Promise<{ slug: string }>
           work_id: pickerBook.work_id,
           isbn_preferred: edition.isbn,
           cover_url: edition.cover_url,
+          isbns_candidates,
           conditions: cart?.default_conditions ?? ['new', 'like_new'],
           format: edition.format !== 'any' ? edition.format : (cart?.default_format ?? 'any'),
           max_price: cart?.default_max_price ?? null,
