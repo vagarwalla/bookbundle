@@ -218,6 +218,17 @@ const OL_TO_GB_LANG: Record<string, string> = {
   nor: 'no', fin: 'fi', tur: 'tr', heb: 'he', hin: 'hi',
 }
 
+async function fetchOLCoverByIsbn(isbn: string): Promise<string | null> {
+  try {
+    const url = `${COVERS}/b/isbn/${isbn}-M.jpg?default=false`
+    const res = await fetch(url, { next: { revalidate: 86400 } })
+    if (!res.ok) return null
+    return `${COVERS}/b/isbn/${isbn}-M.jpg`
+  } catch {
+    return null
+  }
+}
+
 async function fetchGoogleBooksInfo(isbn: string): Promise<{ language: string | null; coverUrl: string | null }> {
   try {
     const url = `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&fields=items(volumeInfo/language,volumeInfo/imageLinks)&maxResults=1`
@@ -232,6 +243,13 @@ async function fetchGoogleBooksInfo(isbn: string): Promise<{ language: string | 
   } catch {
     return { language: null, coverUrl: null }
   }
+}
+
+// Extract an edition descriptor from a title when OL's edition_name field is absent.
+// e.g. "Subtle Knife Gist Edition" → "Gist Edition", "Harry Potter Illustrated Edition" → "Illustrated Edition"
+function deriveEditionName(title: string): string | null {
+  const match = title.match(/\b((?:\w[\w'-]*\s+){0,4}edition(?:\s+\w[\w'-]*)*)\s*$/i)
+  return match ? match[1] : null
 }
 
 function buildEdition(
@@ -252,7 +270,7 @@ function buildEdition(
     format,
     cover_url: coverUrl,
     cover_id: coverId,
-    edition_name: (entry.edition_name as string) || null,
+    edition_name: (entry.edition_name as string) || deriveEditionName((entry.title as string) || '') || null,
     pages: (entry.number_of_pages as number) || null,
   }
 }
@@ -332,18 +350,12 @@ export async function getEditions(workId: string, language = 'eng'): Promise<Edi
     }
   }
 
-  // Back-fill covers for editions with no OL cover.
-  // Try OL-by-ISBN first (covers sometimes exist there even without a covers[] entry in the edition record),
-  // then fall back to Google Books (capped at 5 calls to avoid quota exhaustion).
+  // Back-fill covers: try OL's ISBN cover endpoint first (no quota), then GB for any still missing (capped at 5)
   const noCoverEditions = confirmed.filter((e) => !e.cover_url)
   if (noCoverEditions.length > 0) {
-    const olCoverResults = await Promise.all(noCoverEditions.map(async (e) => {
-      const url = `${COVERS}/b/isbn/${e.isbn}-M.jpg`
-      const res = await fetch(url, { method: 'HEAD', next: { revalidate: 86400 } }).catch(() => null)
-      return res?.ok ? url : null
-    }))
+    const olChecks = await Promise.all(noCoverEditions.map((e) => fetchOLCoverByIsbn(e.isbn)))
     for (let i = 0; i < noCoverEditions.length; i++) {
-      if (olCoverResults[i]) noCoverEditions[i].cover_url = olCoverResults[i]
+      if (olChecks[i]) noCoverEditions[i].cover_url = olChecks[i]
     }
     const stillNoCover = noCoverEditions.filter((e) => !e.cover_url).slice(0, 5)
     if (stillNoCover.length > 0) {
