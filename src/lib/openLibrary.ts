@@ -232,19 +232,28 @@ async function fetchOLCoverByIsbn(isbn: string): Promise<string | null> {
   }
 }
 
-async function fetchGoogleBooksInfo(isbn: string): Promise<{ language: string | null; coverUrl: string | null }> {
+type GBInfo = { language: string | null; coverUrl: string | null; publishYear: number | null; publisher: string | null; format: Format | null }
+
+async function fetchGoogleBooksInfo(isbn: string): Promise<GBInfo> {
+  const empty: GBInfo = { language: null, coverUrl: null, publishYear: null, publisher: null, format: null }
   try {
-    const url = `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&fields=items(volumeInfo/language,volumeInfo/imageLinks)&maxResults=1${GB_KEY}`
+    const url = `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&fields=items(volumeInfo/language,volumeInfo/imageLinks,volumeInfo/publishedDate,volumeInfo/publisher,volumeInfo/printType)&maxResults=1${GB_KEY}`
     const res = await fetch(url, { next: { revalidate: 86400 } })
-    if (!res.ok) return { language: null, coverUrl: null }
+    if (!res.ok) return empty
     const data = await res.json()
     const info = data.items?.[0]?.volumeInfo
-    const thumbnail = (info?.imageLinks?.thumbnail as string | undefined)
+    if (!info) return empty
+    const thumbnail = (info.imageLinks?.thumbnail as string | undefined)
       ?.replace('http://', 'https://')
       .replace('&zoom=1', '&zoom=0') ?? null
-    return { language: (info?.language as string) ?? null, coverUrl: thumbnail }
+    const yearMatch = (info.publishedDate as string | undefined)?.match(/\b(1\d{3}|20\d{2})\b/)
+    const publishYear = yearMatch ? parseInt(yearMatch[1]) : null
+    const publisher = (info.publisher as string | undefined) ?? null
+    const printType = (info.printType as string | undefined)?.toLowerCase() ?? ''
+    const format: Format | null = printType === 'book' ? null : printType.includes('hardcover') ? 'hardcover' : printType.includes('paperback') ? 'paperback' : null
+    return { language: (info.language as string) ?? null, coverUrl: thumbnail, publishYear, publisher, format }
   } catch {
-    return { language: null, coverUrl: null }
+    return empty
   }
 }
 
@@ -342,19 +351,26 @@ export async function getEditions(workId: string, language = 'eng'): Promise<Edi
     confirmed.push(buildEdition(isbn, entry, coverId, coverUrl))
   }
 
-  // Back-fill covers: try OL's ISBN cover endpoint first (no quota), then GB for any still missing (capped at 5)
+  // Back-fill missing critical fields: cover, year, publisher, format
+  // Step 1: try OL ISBN cover for editions missing a cover (free, no quota)
   const noCoverEditions = confirmed.filter((e) => !e.cover_url)
   if (noCoverEditions.length > 0) {
     const olChecks = await Promise.all(noCoverEditions.map((e) => fetchOLCoverByIsbn(e.isbn)))
     for (let i = 0; i < noCoverEditions.length; i++) {
       if (olChecks[i]) noCoverEditions[i].cover_url = olChecks[i]
     }
-    const stillNoCover = noCoverEditions.filter((e) => !e.cover_url)
-    if (stillNoCover.length > 0) {
-      const gbInfos = await Promise.all(stillNoCover.map((e) => fetchGoogleBooksInfo(e.isbn)))
-      for (let i = 0; i < stillNoCover.length; i++) {
-        if (gbInfos[i].coverUrl) stillNoCover[i].cover_url = gbInfos[i].coverUrl
-      }
+  }
+  // Step 2: call GB for any edition missing cover, year, publisher, or format — one call fills all gaps
+  const needsGB = confirmed.filter((e) => !e.cover_url || !e.publish_year || !e.publisher || e.format === 'any')
+  if (needsGB.length > 0) {
+    const gbInfos = await Promise.all(needsGB.map((e) => fetchGoogleBooksInfo(e.isbn)))
+    for (let i = 0; i < needsGB.length; i++) {
+      const e = needsGB[i]
+      const gb = gbInfos[i]
+      if (!e.cover_url && gb.coverUrl) e.cover_url = gb.coverUrl
+      if (!e.publish_year && gb.publishYear) e.publish_year = gb.publishYear
+      if (!e.publisher && gb.publisher) e.publisher = gb.publisher
+      if (e.format === 'any' && gb.format) e.format = gb.format
     }
   }
 
