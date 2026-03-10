@@ -24,15 +24,19 @@ export function shippingCost(n: number, base = 3.99, perAdditional = 1.99): numb
 export function computeTotalCost(bookOptions: BookOption[], assignment: Assignment): number {
   const sellerQty = new Map<string, number>()
   const sellerBookCost = new Map<string, number>()
+  const sellerShippingBase = new Map<string, number>()
   for (const { item } of bookOptions) {
     const l = assignment.get(item.id)
     if (!l) continue
     sellerQty.set(l.seller_id, (sellerQty.get(l.seller_id) ?? 0) + item.quantity)
     sellerBookCost.set(l.seller_id, (sellerBookCost.get(l.seller_id) ?? 0) + l.price * item.quantity)
+    if (!sellerShippingBase.has(l.seller_id)) {
+      sellerShippingBase.set(l.seller_id, l.shipping_base)
+    }
   }
   let cost = 0
   for (const [sid, bookCost] of sellerBookCost) {
-    cost += bookCost + shippingCost(sellerQty.get(sid)!)
+    cost += bookCost + shippingCost(sellerQty.get(sid)!, sellerShippingBase.get(sid) ?? 3.99)
   }
   return cost
 }
@@ -42,7 +46,11 @@ export function buildBookOptions(
   listingsByIsbn: Map<string, Listing[]>
 ): BookOption[] {
   return items.map((item) => {
-    const candidateIsbns = item.isbns_candidates ?? (item.isbn_preferred ? [item.isbn_preferred] : [])
+    // Always include isbn_preferred; isbns_candidates may be [] (not null) so can't rely on ?? alone
+    const candidateIsbns = [...new Set([
+      ...(item.isbn_preferred ? [item.isbn_preferred] : []),
+      ...(item.isbns_candidates ?? []),
+    ])]
     const rawListings = candidateIsbns.flatMap((isbn) => listingsByIsbn.get(isbn) ?? [])
     const qualified = rawListings.filter(
       (l) =>

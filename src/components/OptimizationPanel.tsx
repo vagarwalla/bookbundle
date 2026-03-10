@@ -133,7 +133,10 @@ export function OptimizationPanel({ items, cartSlug }: Props) {
   const hasUnpricedItems = items.some((i) => !i.isbn_preferred)
   const itemsWithIsbn = items.filter((i) => i.isbn_preferred)
   const itemListingCounts = itemsWithIsbn.map((item) => {
-    const candidateIsbns = item.isbns_candidates ?? [item.isbn_preferred!]
+    const candidateIsbns = [...new Set([
+      ...(item.isbn_preferred ? [item.isbn_preferred] : []),
+      ...(item.isbns_candidates ?? []),
+    ])]
     const listings = [...new Map(
       candidateIsbns.flatMap((isbn) => listingsByIsbn[isbn] ?? [])
         .map((l) => [l.listing_id, l])
