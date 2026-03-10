@@ -17,7 +17,7 @@ export default function HomePage() {
   async function loadCarts() {
     try {
       const res = await fetch('/api/cart')
-      const data = await res.json()
+      const data: Cart[] = await res.json()
       setCarts(Array.isArray(data) ? data : [])
     } catch {
       setCarts([])
