@@ -218,15 +218,19 @@ const OL_TO_GB_LANG: Record<string, string> = {
   nor: 'no', fin: 'fi', tur: 'tr', heb: 'he', hin: 'hi',
 }
 
-async function fetchGoogleBooksLanguage(isbn: string): Promise<string | null> {
+async function fetchGoogleBooksInfo(isbn: string): Promise<{ language: string | null; coverUrl: string | null }> {
   try {
-    const url = `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&fields=items(volumeInfo/language)&maxResults=1`
+    const url = `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&fields=items(volumeInfo/language,volumeInfo/imageLinks)&maxResults=1`
     const res = await fetch(url, { next: { revalidate: 86400 } })
-    if (!res.ok) return null
+    if (!res.ok) return { language: null, coverUrl: null }
     const data = await res.json()
-    return (data.items?.[0]?.volumeInfo?.language as string) ?? null
+    const info = data.items?.[0]?.volumeInfo
+    const thumbnail = (info?.imageLinks?.thumbnail as string | undefined)
+      ?.replace('http://', 'https://')
+      .replace('&zoom=1', '&zoom=0') ?? null
+    return { language: (info?.language as string) ?? null, coverUrl: thumbnail }
   } catch {
-    return null
+    return { language: null, coverUrl: null }
   }
 }
 
@@ -298,18 +302,30 @@ export async function getEditions(workId: string, language = 'eng'): Promise<Edi
     const gbLangCode = OL_TO_GB_LANG[language] ?? language.slice(0, 2)
     const toCheck = needsVerification.slice(0, 8)
     const rest = needsVerification.slice(8)
-    const gbLanguages = await Promise.all(toCheck.map(({ isbn }) => fetchGoogleBooksLanguage(isbn)))
+    const gbInfos = await Promise.all(toCheck.map(({ isbn }) => fetchGoogleBooksInfo(isbn)))
     for (let i = 0; i < toCheck.length; i++) {
-      const gbLang = gbLanguages[i]
+      const { language: gbLang, coverUrl: gbCoverUrl } = gbInfos[i]
       // Include if Google Books confirms the language OR has no data (give benefit of the doubt)
       if (gbLang === null || gbLang === gbLangCode) {
         const { isbn, entry, coverId, coverUrl } = toCheck[i]
-        confirmed.push(buildEdition(isbn, entry, coverId, coverUrl))
+        // Prefer OL cover; fall back to GB thumbnail
+        confirmed.push(buildEdition(isbn, entry, coverId, coverUrl ?? gbCoverUrl))
       }
     }
     // Editions beyond the 8 we verified: include with benefit of the doubt
     for (const { isbn, entry, coverId, coverUrl } of rest) {
       confirmed.push(buildEdition(isbn, entry, coverId, coverUrl))
+    }
+  }
+
+  // Back-fill covers from Google Books for any remaining no-cover editions (cap at 5 extra calls)
+  const noCoverEditions = confirmed.filter((e) => !e.cover_url)
+  if (noCoverEditions.length > 0) {
+    const toFetch = noCoverEditions.slice(0, 5)
+    const gbInfos = await Promise.all(toFetch.map((e) => fetchGoogleBooksInfo(e.isbn)))
+    for (let i = 0; i < toFetch.length; i++) {
+      const gbCoverUrl = gbInfos[i].coverUrl
+      if (gbCoverUrl) toFetch[i].cover_url = gbCoverUrl
     }
   }
 
