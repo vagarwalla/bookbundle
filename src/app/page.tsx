@@ -17,8 +17,13 @@ export default function HomePage() {
   async function loadCarts() {
     try {
       const res = await fetch('/api/cart')
-      const data: Cart[] = await res.json()
-      setCarts(Array.isArray(data) ? data : [])
+      const all: Cart[] = await res.json()
+      const data = Array.isArray(all) ? all : []
+      const empty = data.filter((c) => (c.item_count ?? 0) === 0)
+      if (empty.length > 0) {
+        await Promise.all(empty.map((c) => fetch(`/api/cart/${c.slug}`, { method: 'DELETE' })))
+      }
+      setCarts(data.filter((c) => (c.item_count ?? 0) > 0))
     } catch {
       setCarts([])
     } finally {

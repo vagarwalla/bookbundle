@@ -31,13 +31,7 @@ export async function GET() {
       item_count: countMap[c.id] || 0,
     }))
 
-    // Purge empty carts server-side so stale zero-item carts never accumulate
-    const emptyIds = carts.filter((c) => c.item_count === 0).map((c) => c.id)
-    if (emptyIds.length > 0) {
-      await supabase.from('carts').delete().in('id', emptyIds)
-    }
-
-    return NextResponse.json(carts.filter((c) => c.item_count > 0))
+    return NextResponse.json(carts)
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 })
   }

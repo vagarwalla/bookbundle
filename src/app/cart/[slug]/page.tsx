@@ -158,13 +158,7 @@ export default function CartPage({ params }: { params: Promise<{ slug: string }>
 
   async function handleRemoveItem(id: string) {
     await fetch(`/api/cart/${slug}/items/${id}`, { method: 'DELETE' })
-    const remaining = items.filter((i) => i.id !== id)
-    if (remaining.length === 0) {
-      await fetch(`/api/cart/${slug}`, { method: 'DELETE' })
-      router.push('/')
-      return
-    }
-    setItems(remaining)
+    setItems((prev) => prev.filter((i) => i.id !== id))
     toast.success('Book removed')
   }
 
