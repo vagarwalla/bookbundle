@@ -5,59 +5,61 @@ const COVERS = 'https://covers.openlibrary.org'
 
 export async function searchBooks(query: string): Promise<BookSearchResult[]> {
   const olUrl = `${BASE}/search.json?q=${encodeURIComponent(query)}&fields=title,author_name,key,cover_i,first_publish_year,series_name,series_key,series_position&limit=10`
-  const gbUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=20`
-
-  const [olRes, gbRes] = await Promise.all([
-    fetch(olUrl, { next: { revalidate: 3600 } }),
-    fetch(gbUrl, { cache: 'no-store' }).catch(() => null),
-  ])
-
+  const olRes = await fetch(olUrl, { next: { revalidate: 3600 } })
   if (!olRes.ok) return []
   const olData = await olRes.json()
-
-  // Build GB series map: book title → { series, number }
-  const gbByTitle = new Map<string, { series: string; number: string | null }>()
-  if (gbRes?.ok) {
-    const gbData = await gbRes.json()
-    for (const item of gbData.items || []) {
-      const gbTitle: string = item.volumeInfo?.title || ''
-      const extracted = extractSeriesFromGBTitle(gbTitle)
-      if (extracted) gbByTitle.set(normalize(extracted.bookTitle), { series: extracted.series, number: extracted.number })
-    }
-  }
+  const docs: Record<string, unknown>[] = olData.docs || []
 
   // Build initial results with OL data
-  const docs: Record<string, unknown>[] = olData.docs || []
   const results: BookSearchResult[] = docs.map((doc) => {
-    const olTitle = doc.title as string
     const olSeriesName = Array.isArray(doc.series_name) ? (doc.series_name as string[])[0] : null
     const olSeriesPos = Array.isArray(doc.series_position) ? (doc.series_position as string[])[0] : null
-    const gbMatch = matchGB(olTitle, gbByTitle)
     return {
-      title: olTitle,
+      title: doc.title as string,
       author: Array.isArray(doc.author_name) ? (doc.author_name as string[])[0] : 'Unknown',
       work_id: doc.key as string,
       cover_url: doc.cover_i ? `${COVERS}/b/id/${doc.cover_i}-M.jpg` : null,
       first_publish_year: doc.first_publish_year as number | null,
-      series: olSeriesName ?? gbMatch?.series ?? null,
-      series_number: olSeriesPos
-        ? String(parseInt(olSeriesPos))
-        : gbMatch?.number
-          ? String(parseInt(gbMatch.number))
-          : null,
+      series: olSeriesName ?? null,
+      series_number: olSeriesPos ? String(parseInt(olSeriesPos)) : null,
     }
   })
 
-  // Detect series search: query closely matches a series name that multiple results share
+  // Detect series search via OL series key
   const seriesKey = detectSeriesKey(query, docs)
   if (seriesKey) {
     const seriesResults = await fetchSeriesBooks(seriesKey, results)
     if (seriesResults.length > 0) return seriesResults
   }
 
-  // Detect series search via GB (e.g. "Lockwood & Co" — not in OL series)
-  const gbSeriesResults = detectGBSeriesSearch(query, results, gbByTitle)
-  if (gbSeriesResults) return gbSeriesResults
+  // Only call GB if OL has no series data — GB fills gaps (e.g. series OL doesn't track)
+  const olHasSeries = results.some((r) => r.series)
+  if (!olHasSeries) {
+    const gbUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=20`
+    const gbRes = await fetch(gbUrl, { next: { revalidate: 3600 } }).catch(() => null)
+    if (gbRes?.ok) {
+      const gbByTitle = new Map<string, { series: string; number: string | null }>()
+      const gbData = await gbRes.json()
+      for (const item of gbData.items || []) {
+        const gbTitle: string = item.volumeInfo?.title || ''
+        const extracted = extractSeriesFromGBTitle(gbTitle)
+        if (extracted) gbByTitle.set(normalize(extracted.bookTitle), { series: extracted.series, number: extracted.number })
+      }
+      // Enrich results with GB series data
+      for (const r of results) {
+        if (!r.series) {
+          const gbMatch = matchGB(r.title, gbByTitle)
+          if (gbMatch) {
+            r.series = gbMatch.series
+            r.series_number = gbMatch.number ? String(parseInt(gbMatch.number)) : null
+          }
+        }
+      }
+      // Detect series search via GB (e.g. "Lockwood & Co" — not in OL series)
+      const gbSeriesResults = detectGBSeriesSearch(query, results, gbByTitle)
+      if (gbSeriesResults) return gbSeriesResults
+    }
+  }
 
   return results
 }
@@ -334,20 +336,9 @@ export async function getEditions(workId: string, language = 'eng'): Promise<Edi
     }
   }
 
-  // Editions with no OL language tag: include all with benefit of the doubt.
-  // GB is only used to try to find a cover image, not to gate inclusion.
-  if (language && needsVerification.length > 0) {
-    const toCheck = needsVerification.slice(0, 8)
-    const rest = needsVerification.slice(8)
-    const gbInfos = await Promise.all(toCheck.map(({ isbn }) => fetchGoogleBooksInfo(isbn)))
-    for (let i = 0; i < toCheck.length; i++) {
-      const { coverUrl: gbCoverUrl } = gbInfos[i]
-      const { isbn, entry, coverId, coverUrl } = toCheck[i]
-      confirmed.push(buildEdition(isbn, entry, coverId, coverUrl ?? gbCoverUrl))
-    }
-    for (const { isbn, entry, coverId, coverUrl } of rest) {
-      confirmed.push(buildEdition(isbn, entry, coverId, coverUrl))
-    }
+  // Editions with no OL language tag: include all — covers handled by back-fill below
+  for (const { isbn, entry, coverId, coverUrl } of needsVerification) {
+    confirmed.push(buildEdition(isbn, entry, coverId, coverUrl))
   }
 
   // Back-fill covers: try OL's ISBN cover endpoint first (no quota), then GB for any still missing (capped at 5)
