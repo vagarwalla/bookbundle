@@ -18,9 +18,9 @@ function normalizeItem(item: Record<string, unknown>) {
       very_good: ['very_good', 'like_new', 'new'],
       good: ['good', 'very_good', 'like_new', 'new'],
     }
-    item.conditions = map[min] ?? ['new', 'like_new']
+    item.conditions = map[min] ?? ['new', 'like_new', 'very_good', 'good']
   }
-  if (!item.conditions) item.conditions = ['new', 'like_new']
+  if (!item.conditions) item.conditions = ['new', 'like_new', 'very_good', 'good']
   if (item.max_price === undefined) item.max_price = null
   if (item.isbns_candidates === undefined) item.isbns_candidates = null
   return item
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
         .single()
       if (!result.error && result.data) {
         return NextResponse.json(
-          normalizeItem({ ...result.data, conditions: conditions ?? ['new', 'like_new'], max_price: max_price ?? null }),
+          normalizeItem({ ...result.data, conditions: conditions ?? ['new', 'like_new', 'very_good', 'good'], max_price: max_price ?? null }),
           { status: 201 }
         )
       }

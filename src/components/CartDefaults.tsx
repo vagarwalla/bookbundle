@@ -39,7 +39,7 @@ export function CartDefaults({ cart, slug, onUpdate }: Props) {
     onUpdate(updated)
   }
 
-  const conditions = cart.default_conditions ?? ['new', 'like_new']
+  const conditions = cart.default_conditions ?? ['new', 'like_new', 'very_good', 'good']
   const format: Format = cart.default_format ?? 'any'
 
   return (

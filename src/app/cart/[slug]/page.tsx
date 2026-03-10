@@ -113,7 +113,7 @@ export default function CartPage({ params }: { params: Promise<{ slug: string }>
           isbn_preferred: edition.isbn,
           cover_url: edition.cover_url,
           isbns_candidates,
-          conditions: cart?.default_conditions ?? ['new', 'like_new'],
+          conditions: cart?.default_conditions ?? ['new', 'like_new', 'very_good', 'good'],
           format: edition.format !== 'any' ? edition.format : (cart?.default_format ?? 'any'),
           max_price: cart?.default_max_price ?? null,
           flexible: false,
