@@ -137,9 +137,11 @@ function detectGBSeriesSearch(
   }
   if (bestCount < 2) return null
 
-  // Propagate the series name to all results that don't have one yet, then sort all
-  const enriched = results.map(r => ({ ...r, series: r.series ?? bestSeries }))
-  return enriched.sort((a, b) => {
+  // Sort: numbered series books first (in order), then unnumbered series books, then others
+  return [...results].sort((a, b) => {
+    const aInSeries = a.series === bestSeries
+    const bInSeries = b.series === bestSeries
+    if (aInSeries !== bInSeries) return aInSeries ? -1 : 1
     const na = a.series_number ? parseInt(a.series_number) : Infinity
     const nb = b.series_number ? parseInt(b.series_number) : Infinity
     return na - nb
@@ -173,11 +175,12 @@ function extractSeriesFromGBTitle(gbTitle: string): { bookTitle: string; series:
       return { bookTitle, series: seriesName, number }
     }
   }
-  // Pattern 2: "Book Title (Series, #N)" or "Book Title (Series Book N)"
-  const parenMatch = gbTitle.match(/^(.+?)\s*\(([^)]+?)(?:[,\s]+(?:book\s+)?#?(\d+))?\)\s*$/i)
+  // Pattern 2: "Book Title (Series, #N)" or "Book Title (Series Book N/Word)"
+  const WORD_NUMS: Record<string, string> = { one:'1',two:'2',three:'3',four:'4',five:'5',six:'6',seven:'7',eight:'8',nine:'9',ten:'10' }
+  const parenMatch = gbTitle.match(/^(.+?)\s*\(([^)]+?)(?:[,\s]+(?:book\s+)?(?:#?(\d+)|(one|two|three|four|five|six|seven|eight|nine|ten)))?\)\s*$/i)
   if (parenMatch) {
     const candidate = parenMatch[2].trim()
-    const number = parenMatch[3] ?? null
+    const number = parenMatch[3] ?? (parenMatch[4] ? WORD_NUMS[parenMatch[4].toLowerCase()] : null)
     if (!isEditionNote(candidate)) return { bookTitle: parenMatch[1].trim(), series: candidate, number }
   }
   return null
