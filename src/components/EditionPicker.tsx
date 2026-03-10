@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { Loader2, Star, ChevronDown, X } from 'lucide-react'
+import { Loader2, Star, ChevronDown, X, Check } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import type { BookSearchResult, Edition, Format } from '@/lib/types'
@@ -211,14 +211,25 @@ function SectionHeader({
   label: string; groups: CoverGroup[]; selectedKeys: string[]; onToggleGroup: (keys: string[]) => void
 }) {
   const groupKeys = groups.map((g) => g.key)
-  const allSelected = groupKeys.length > 0 && groupKeys.every((k) => selectedKeys.includes(k))
+  const selectedCount = groupKeys.filter((k) => selectedKeys.includes(k)).length
+  const allSelected = selectedCount === groupKeys.length
+  const someSelected = selectedCount > 0 && !allSelected
   return (
-    <div className="flex items-center justify-between px-1 mb-2">
-      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
-      <button onClick={() => onToggleGroup(groupKeys)} className="text-xs text-primary hover:underline shrink-0">
-        {allSelected ? 'Deselect all' : 'Select all'}
-      </button>
-    </div>
+    <button
+      onClick={() => onToggleGroup(groupKeys)}
+      className="flex items-center gap-2.5 w-full px-3 py-2.5 bg-muted/60 hover:bg-muted transition-colors text-left"
+    >
+      <div className={`h-4 w-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+        allSelected ? 'bg-primary border-primary' : someSelected ? 'border-primary bg-primary/10' : 'border-input bg-background'
+      }`}>
+        {allSelected && <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
+        {someSelected && <div className="h-0.5 w-2 bg-primary rounded-full" />}
+      </div>
+      <span className="text-sm font-medium text-foreground flex-1">{label}</span>
+      <span className="text-xs text-muted-foreground shrink-0">
+        {selectedCount > 0 ? `${selectedCount} / ${groupKeys.length} selected` : `${groupKeys.length} edition${groupKeys.length !== 1 ? 's' : ''}`}
+      </span>
+    </button>
   )
 }
 
@@ -628,11 +639,11 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
               No editions found for this filter.
             </div>
           ) : groupBy === 'publisher' ? (
-            <div className="space-y-6 py-2">
+            <div className="space-y-4 py-2">
               {publisherSections.map(({ label, groups }) => (
-                <div key={label}>
+                <div key={label} className="border border-border rounded-lg overflow-hidden">
                   <SectionHeader label={label} groups={groups} selectedKeys={selectedKeys} onToggleGroup={toggleGroup} />
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-3">
                     {groups.map((group) => (
                       <EditionCard key={group.key} group={group} formatFilter={formatFilter} selectedKeys={selectedKeys} firstEditionKey={firstEditionKey} onToggle={toggleCard} />
                     ))}
@@ -645,15 +656,15 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <div className="space-y-6 py-2">
+            <div className="space-y-4 py-2">
               {visualSections.map((section, sectionIdx) => {
                 const sectionLabel = section.clusterRep
                   ? (clusterLabels[section.clusterRep] ?? (labelsLoading ? '…' : `Cover design ${sectionIdx + 1}`))
                   : `Cover design ${sectionIdx + 1}`
                 return (
-                  <div key={section.clusterRep ?? `no-cover-${sectionIdx}`}>
+                  <div key={section.clusterRep ?? `no-cover-${sectionIdx}`} className="border border-border rounded-lg overflow-hidden">
                     <SectionHeader label={sectionLabel} groups={section.groups} selectedKeys={selectedKeys} onToggleGroup={toggleGroup} />
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-3">
                       {section.groups.map((group) => (
                         <EditionCard key={group.key} group={group} formatFilter={formatFilter} selectedKeys={selectedKeys} firstEditionKey={firstEditionKey} onToggle={toggleCard} />
                       ))}
