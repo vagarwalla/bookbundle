@@ -104,6 +104,20 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
 
   const firstEditionKey = sorted[0]?.key ?? null
 
+  // Group cover-groups by publisher so visually similar editions sit together
+  const publisherGroups = useMemo(() => {
+    const normalizePublisher = (p: string | null) => p?.trim().toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ') ?? ''
+    const map = new Map<string, { label: string; groups: CoverGroup[] }>()
+    for (const group of sorted) {
+      const rep = bestEdition(group, formatFilter)
+      const norm = normalizePublisher(rep.publisher)
+      const key = norm || 'unknown'
+      if (!map.has(key)) map.set(key, { label: rep.publisher || 'Unknown publisher', groups: [] })
+      map.get(key)!.groups.push(group)
+    }
+    return Array.from(map.values())
+  }, [sorted, formatFilter])
+
   function handleConfirm() {
     const group = sorted.find((g) => g.key === selectedKey)
     if (!group) return
@@ -160,63 +174,71 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
               No editions found for this filter.
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-5 py-2">
-              {sorted.map((group) => {
-                const rep = bestEdition(group, formatFilter)
-                const isSelected = group.key === selectedKey
-                const isFirst = group.key === firstEditionKey
-                return (
-                  <button
-                    key={group.key}
-                    onClick={() => setSelectedKey(group.key)}
-                    className={`relative rounded-lg p-2 text-left transition-all border-2 ${
-                      isSelected ? 'border-primary bg-primary/5' : 'border-transparent hover:border-border'
-                    }`}
-                  >
-                    {isSelected && (
-                      <div className="absolute top-2 right-2 bg-primary rounded-full p-1 z-10">
-                        <Check className="h-3.5 w-3.5 text-white" />
-                      </div>
-                    )}
-                    {isFirst && !isSelected && (
-                      <div className="absolute top-2 right-2 bg-amber-400 rounded-full p-1 z-10" title="First edition">
-                        <Star className="h-3.5 w-3.5 text-white fill-white" />
-                      </div>
-                    )}
-                    {isFirst && isSelected && (
-                      <div className="absolute top-2 left-2 bg-amber-400 rounded-full p-1 z-10" title="First edition">
-                        <Star className="h-3.5 w-3.5 text-white fill-white" />
-                      </div>
-                    )}
-                    <div className="aspect-[2/3] bg-muted rounded overflow-hidden mb-3">
-                      <img
-                        src={group.cover_url}
-                        alt={rep.title}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <div className="text-sm leading-snug space-y-1 min-h-[72px]">
-                      {rep.edition_name && (
-                        <div className="font-medium text-foreground line-clamp-2">{rep.edition_name}</div>
-                      )}
-                      <div className="text-muted-foreground line-clamp-2">
-                        {rep.publisher || 'Unknown'}{rep.publish_year ? ` · ${rep.publish_year}` : ''}
-                      </div>
-                      {rep.pages && (
-                        <div className="text-muted-foreground text-xs">{rep.pages} pp</div>
-                      )}
-                      {/* Format badges */}
-                      <div className="flex flex-wrap gap-1 pt-0.5">
-                        {group.formats.filter((f) => f !== 'any').map((f) => (
-                          <span key={f} className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground capitalize">
-                            {f === 'hardcover' ? 'HC' : 'PB'}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </button>
-                )
-              })}
+            <div className="space-y-6 py-2">
+              {publisherGroups.map(({ label, groups }) => (
+                <div key={label}>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 px-1">
+                    {label}
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                    {groups.map((group) => {
+                      const rep = bestEdition(group, formatFilter)
+                      const isSelected = group.key === selectedKey
+                      const isFirst = group.key === firstEditionKey
+                      return (
+                        <button
+                          key={group.key}
+                          onClick={() => setSelectedKey(group.key)}
+                          className={`relative rounded-lg p-2 text-left transition-all border-2 ${
+                            isSelected ? 'border-primary bg-primary/5' : 'border-transparent hover:border-border'
+                          }`}
+                        >
+                          {isSelected && (
+                            <div className="absolute top-2 right-2 bg-primary rounded-full p-1 z-10">
+                              <Check className="h-3.5 w-3.5 text-white" />
+                            </div>
+                          )}
+                          {isFirst && !isSelected && (
+                            <div className="absolute top-2 right-2 bg-amber-400 rounded-full p-1 z-10" title="First edition">
+                              <Star className="h-3.5 w-3.5 text-white fill-white" />
+                            </div>
+                          )}
+                          {isFirst && isSelected && (
+                            <div className="absolute top-2 left-2 bg-amber-400 rounded-full p-1 z-10" title="First edition">
+                              <Star className="h-3.5 w-3.5 text-white fill-white" />
+                            </div>
+                          )}
+                          <div className="aspect-[2/3] bg-muted rounded overflow-hidden mb-3">
+                            <img
+                              src={group.cover_url}
+                              alt={rep.title}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="text-sm leading-snug space-y-1 min-h-[72px]">
+                            {rep.edition_name && (
+                              <div className="font-medium text-foreground line-clamp-2">{rep.edition_name}</div>
+                            )}
+                            <div className="text-muted-foreground line-clamp-2">
+                              {rep.publish_year ?? ''}
+                            </div>
+                            {rep.pages && (
+                              <div className="text-muted-foreground text-xs">{rep.pages} pp</div>
+                            )}
+                            <div className="flex flex-wrap gap-1 pt-0.5">
+                              {group.formats.filter((f) => f !== 'any').map((f) => (
+                                <span key={f} className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground capitalize">
+                                  {f === 'hardcover' ? 'HC' : 'PB'}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
