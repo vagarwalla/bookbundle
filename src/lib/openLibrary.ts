@@ -18,7 +18,7 @@ export async function searchBooks(query: string): Promise<BookSearchResult[]> {
   }))
 }
 
-function detectFormat(title: string, physDesc: string | null): Format {
+export function detectFormat(title: string, physDesc: string | null): Format {
   const text = `${title} ${physDesc || ''}`.toLowerCase()
   if (text.includes('hardcover') || text.includes('hardback')) return 'hardcover'
   if (text.includes('paperback') || text.includes('softcover') || text.includes('mass market')) return 'paperback'
@@ -48,9 +48,8 @@ export async function getEditions(workId: string): Promise<Edition[]> {
     const coverId = entry.covers?.[0]
     const coverUrl = coverId && coverId > 0 ? `${COVERS}/b/id/${coverId}-M.jpg` : null
 
-    const publishYear = entry.publish_date
-      ? parseInt(entry.publish_date.replace(/\D/g, '').slice(0, 4))
-      : null
+    const yearMatch = entry.publish_date?.match(/\b(1\d{3}|20\d{2})\b/)
+    const publishYear = yearMatch ? parseInt(yearMatch[1]) : null
 
     const physDesc = entry.physical_format || null
     const format = detectFormat(entry.title || '', physDesc)

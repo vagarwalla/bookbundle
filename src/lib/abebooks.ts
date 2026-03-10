@@ -7,7 +7,7 @@ const SEARCH_URL = 'https://www.abebooks.com/servlet/SearchResults'
 // Suppress unused variable warnings for constants kept for documentation purposes
 void PRICING_URL
 
-function normalizeCondition(cond: string): Condition {
+export function normalizeCondition(cond: string): Condition {
   const c = cond.toLowerCase()
   if (c.includes('new') && !c.includes('like') && !c.includes('as')) return 'new'
   if (c.includes('like new') || c.includes('as new') || c.includes('fine')) return 'like_new'
