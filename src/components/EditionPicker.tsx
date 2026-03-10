@@ -116,7 +116,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl w-[90vw] max-h-[90vh] flex flex-col">
+      <DialogContent className="sm:max-w-5xl w-[90vw] max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Choose cover — {book?.title}</DialogTitle>
         </DialogHeader>
