@@ -59,7 +59,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
       }
     }
 
-    return NextResponse.json({ error: result.error.message }, { status: 500 })
+    return NextResponse.json({ error: result.error?.message ?? 'Unknown error' }, { status: 500 })
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 })
   }
