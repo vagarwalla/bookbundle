@@ -156,14 +156,15 @@ type GBMatch = { series: string; number: string | null }
 
 function matchGB(olTitle: string, gbByTitle: Map<string, GBMatch>): GBMatch | null {
   const normOL = normalize(olTitle)
+  // Skip very short titles — too likely to match unrelated GB content
+  if (normOL.length < 12) return null
+  // Strip leading articles for suffix matching (e.g. "the screaming staircase" → "screaming staircase")
+  const stripped = normOL.replace(/^(the|a|an) /, '')
   for (const [normGB, match] of gbByTitle) {
-    // Exact match
     if (normOL === normGB) return match
-    // OL title is a suffix of GB title (e.g. GB "Lockwood & Co. 1: The Screaming Staircase")
     if (normGB.endsWith(normOL) || normGB.endsWith(' ' + normOL)) return match
-    // Substring only if OL title is long enough to be unambiguous (>= 10 chars)
-    if (normOL.length >= 10 && normGB.includes(normOL)) return match
-    if (normGB.length >= 10 && normOL.includes(normGB)) return match
+    if (stripped.length >= 12 && (normGB.endsWith(stripped) || normGB.endsWith(' ' + stripped))) return match
+    if (normGB.includes(normOL)) return match
   }
   return null
 }
