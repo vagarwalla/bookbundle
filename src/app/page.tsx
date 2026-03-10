@@ -46,7 +46,7 @@ export default function HomePage() {
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <BookOpen className="h-6 w-6 text-primary" />
-            <span className="text-xl font-semibold">BookBundle</span>
+            <span className="text-xl font-semibold">Earmarked</span>
           </div>
           <Button onClick={() => setOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />

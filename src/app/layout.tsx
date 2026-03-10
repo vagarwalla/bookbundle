@@ -6,7 +6,7 @@ import './globals.css'
 const geist = Geist({ subsets: ['latin'], variable: '--font-sans' })
 
 export const metadata: Metadata = {
-  title: 'BookBundle — Find cheap used books',
+  title: 'Earmarked — Find cheap used books',
   description: 'Build a list of books, find cheap used copies, minimize cost by grouping sellers.',
 }
 
