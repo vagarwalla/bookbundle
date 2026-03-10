@@ -1,12 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { Loader2, ExternalLink, TrendingDown, Copy, Check } from 'lucide-react'
+import { Loader2, ExternalLink, TrendingDown, Copy, Check, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import type { CartItem, Listing, OptimizationResult } from '@/lib/types'
+import type { CartItem, Listing, OptimizationResult, PriceResponse, SourceInfo } from '@/lib/types'
 
 interface Props {
   items: CartItem[]
@@ -16,14 +16,16 @@ interface Props {
 export function OptimizationPanel({ items, cartSlug }: Props) {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<OptimizationResult | null>(null)
+  const [sources, setSources] = useState<SourceInfo[]>([])
   const [copied, setCopied] = useState(false)
 
   async function findDeals() {
     if (items.length === 0) return
     setLoading(true)
+    setResult(null)
+    setSources([])
 
     try {
-      // 1. Fetch prices for all ISBNs
       const isbns = items
         .map((i) => i.isbn_preferred)
         .filter(Boolean) as string[]
@@ -33,9 +35,11 @@ export function OptimizationPanel({ items, cartSlug }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isbns }),
       })
-      const listingsByIsbn: Record<string, Listing[]> = await priceRes.json()
+      const priceData: PriceResponse = await priceRes.json()
+      setSources(priceData.sources ?? [])
 
-      // 2. Run optimization
+      const listingsByIsbn: Record<string, Listing[]> = priceData.listings ?? {}
+
       const optRes = await fetch('/api/optimize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -63,6 +67,9 @@ export function OptimizationPanel({ items, cartSlug }: Props) {
   }
 
   const hasUnpricedItems = items.some((i) => !i.isbn_preferred)
+  const searchedSources = sources.filter((s) => s.found >= 0)
+  const browseSources = sources.filter((s) => s.found === -1)
+  const foundAnyListings = searchedSources.some((s) => s.found > 0)
 
   return (
     <div className="space-y-4">
@@ -93,8 +100,58 @@ export function OptimizationPanel({ items, cartSlug }: Props) {
         </p>
       )}
 
+      {/* Source search results */}
+      {sources.length > 0 && (
+        <div className="rounded-lg border bg-muted/30 px-3 py-2 space-y-1.5">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <Search className="h-3 w-3" />
+            Searched
+          </div>
+          {searchedSources.map((s) => (
+            <a
+              key={s.name}
+              href={s.search_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between text-xs hover:underline"
+            >
+              <span className="font-medium">{s.name}</span>
+              <span className={s.found > 0 ? 'text-green-700' : 'text-muted-foreground'}>
+                {s.found > 0 ? `${s.found} listing${s.found !== 1 ? 's' : ''}` : 'no results'}
+              </span>
+            </a>
+          ))}
+          {browseSources.length > 0 && (
+            <div className="pt-1 border-t">
+              <div className="text-[10px] text-muted-foreground mb-1">Browse manually</div>
+              <div className="flex flex-wrap gap-1.5">
+                {browseSources.map((s) => (
+                  <a
+                    key={s.name}
+                    href={s.search_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[10px] underline text-muted-foreground hover:text-foreground"
+                  >
+                    {s.name}
+                    <ExternalLink className="inline h-2.5 w-2.5 ml-0.5 -mt-0.5" />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* No-results fallback */}
+      {result && !foundAnyListings && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          No listings were found automatically. Try browsing the stores above, or check that your editions have ISBNs selected.
+        </div>
+      )}
+
       {/* Results */}
-      {result && (
+      {result && foundAnyListings && (
         <div className="space-y-3">
           {/* Summary */}
           <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-3 py-2">

@@ -7,6 +7,7 @@ import { ArrowLeft, BookOpen, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { BookSearch } from '@/components/BookSearch'
 import { EditionPicker } from '@/components/EditionPicker'
+import { CoverPicker } from '@/components/CoverPicker'
 import { CartItemCard } from '@/components/CartItemCard'
 import { OptimizationPanel } from '@/components/OptimizationPanel'
 import type { Cart, CartItem, BookSearchResult, Edition } from '@/lib/types'
@@ -22,6 +23,9 @@ export default function CartPage({ params }: { params: Promise<{ slug: string }>
   const [pickerOpen, setPickerOpen] = useState(false)
   // When changing cover for existing item
   const [editingItem, setEditingItem] = useState<CartItem | null>(null)
+  // Cover-only picker state
+  const [coverItem, setCoverItem] = useState<CartItem | null>(null)
+  const [coverPickerOpen, setCoverPickerOpen] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -94,7 +98,7 @@ export default function CartPage({ params }: { params: Promise<{ slug: string }>
           isbn_preferred: edition.isbn,
           cover_url: edition.cover_url,
           format: edition.format,
-          condition_min: 'like_new',
+          conditions: ['new', 'like_new'],
           flexible: false,
           quantity: 1,
           sort_order: items.length,
@@ -106,6 +110,25 @@ export default function CartPage({ params }: { params: Promise<{ slug: string }>
     }
     setEditingItem(null)
     setPickerBook(null)
+  }
+
+  function handlePickCover(item: CartItem) {
+    setCoverItem(item)
+    setCoverPickerOpen(true)
+  }
+
+  async function handleCoverConfirm(coverUrl: string) {
+    if (!coverItem) return
+    await fetch(`/api/cart/${slug}/items/${coverItem.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cover_url: coverUrl }),
+    })
+    setItems((prev) =>
+      prev.map((i) => i.id === coverItem.id ? { ...i, cover_url: coverUrl } : i)
+    )
+    toast.success('Cover updated')
+    setCoverItem(null)
   }
 
   function handleUpdateItem(id: string, patch: Partial<CartItem>) {
@@ -166,7 +189,7 @@ export default function CartPage({ params }: { params: Promise<{ slug: string }>
               <p>Search for a book above to add it to your cart.</p>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2 max-h-[calc(100vh-220px)] overflow-y-auto pr-1">
               {items.map((item) => (
                 <CartItemCard
                   key={item.id}
@@ -174,6 +197,7 @@ export default function CartPage({ params }: { params: Promise<{ slug: string }>
                   onUpdate={handleUpdateItem}
                   onRemove={handleRemoveItem}
                   onChangeCover={handleChangeCover}
+                  onPickCover={handlePickCover}
                 />
               ))}
             </div>
@@ -191,6 +215,14 @@ export default function CartPage({ params }: { params: Promise<{ slug: string }>
         open={pickerOpen}
         onOpenChange={setPickerOpen}
         onConfirm={handleEditionConfirm}
+      />
+
+      <CoverPicker
+        workId={coverItem?.work_id ?? null}
+        currentCoverUrl={coverItem?.cover_url ?? null}
+        open={coverPickerOpen}
+        onOpenChange={setCoverPickerOpen}
+        onConfirm={handleCoverConfirm}
       />
     </main>
   )

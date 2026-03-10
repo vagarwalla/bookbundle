@@ -4,14 +4,14 @@ import { useState } from 'react'
 import { X, RefreshCw, Minus, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { CartItem, Condition, Format } from '@/lib/types'
 
 interface Props {
   item: CartItem
   onUpdate: (id: string, patch: Partial<CartItem>) => void
   onRemove: (id: string) => void
-  onChangeCover: (item: CartItem) => void
+  onChangeCover: (item: CartItem) => void  // change edition + cover
+  onPickCover: (item: CartItem) => void    // change cover image only
 }
 
 const CONDITIONS: { value: Condition; label: string }[] = [
@@ -21,7 +21,15 @@ const CONDITIONS: { value: Condition; label: string }[] = [
   { value: 'good', label: 'Good' },
 ]
 
-export function CartItemCard({ item, onUpdate, onRemove, onChangeCover }: Props) {
+function toggleCondition(current: Condition[], value: Condition): Condition[] {
+  if (current.includes(value)) {
+    const next = current.filter((c) => c !== value)
+    return next.length === 0 ? current : next // require at least one
+  }
+  return [...current, value]
+}
+
+export function CartItemCard({ item, onUpdate, onRemove, onChangeCover, onPickCover }: Props) {
   const [saving, setSaving] = useState(false)
 
   async function patch(updates: Partial<CartItem>) {
@@ -41,19 +49,24 @@ export function CartItemCard({ item, onUpdate, onRemove, onChangeCover }: Props)
     <div className={`flex gap-3 p-3 rounded-lg border bg-card transition-opacity ${saving ? 'opacity-60' : ''}`}>
       {/* Cover */}
       <div className="shrink-0">
-        <div className="w-20 h-28 bg-muted rounded overflow-hidden">
+        <button
+          className="w-20 h-28 bg-muted rounded overflow-hidden block hover:opacity-80 transition-opacity"
+          onClick={() => onPickCover(item)}
+          title="Change cover image"
+        >
           {item.cover_url ? (
             <img src={item.cover_url} alt={item.title} className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-sm text-muted-foreground">?</div>
           )}
-        </div>
+        </button>
         <button
-          className="mt-1 w-20 flex justify-center text-muted-foreground hover:text-foreground"
+          className="mt-1 w-20 flex justify-center gap-1 items-center text-[10px] text-muted-foreground hover:text-foreground"
           onClick={() => onChangeCover(item)}
-          title="Change cover"
+          title="Change edition"
         >
           <RefreshCw className="h-3 w-3" />
+          <span>edition</span>
         </button>
       </div>
 
@@ -70,17 +83,21 @@ export function CartItemCard({ item, onUpdate, onRemove, onChangeCover }: Props)
         </div>
 
         <div className="flex flex-wrap gap-2 items-center">
-          {/* Condition */}
-          <Select value={item.condition_min} onValueChange={(v) => patch({ condition_min: v as Condition })}>
-            <SelectTrigger className="h-7 text-xs w-28">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {CONDITIONS.map((c) => (
-                <SelectItem key={c.value} value={c.value} className="text-xs">{c.label}+</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Condition multi-select */}
+          <div className="flex gap-0.5 border rounded-md overflow-hidden text-xs">
+            {CONDITIONS.map((c) => {
+              const active = (item.conditions ?? []).includes(c.value)
+              return (
+                <button
+                  key={c.value}
+                  className={`px-2 py-1 transition-colors ${active ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'}`}
+                  onClick={() => patch({ conditions: toggleCondition(item.conditions ?? [], c.value) })}
+                >
+                  {c.label}
+                </button>
+              )
+            })}
+          </div>
 
           {/* Format toggle */}
           <div className="flex gap-0.5 border rounded-md overflow-hidden text-xs">

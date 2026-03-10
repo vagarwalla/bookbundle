@@ -18,7 +18,7 @@ export interface CartItem {
   isbn_preferred: string | null
   cover_url: string | null
   format: Format
-  condition_min: Condition
+  conditions: Condition[]
   flexible: boolean
   quantity: number
   sort_order: number
@@ -75,4 +75,15 @@ export interface OptimizationResult {
   grand_total: number
   naive_total: number
   savings: number
+}
+
+export interface SourceInfo {
+  name: string
+  search_url: string  // link users can click to browse manually
+  found: number       // number of listings found (0 = no results)
+}
+
+export interface PriceResponse {
+  listings: Record<string, Listing[]>
+  sources: SourceInfo[]
 }
