@@ -25,6 +25,7 @@ async function runSQL(sql: string, token: string): Promise<{ error?: string }> {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ query: sql }),
+    signal: AbortSignal.timeout(10_000),
   })
   if (!res.ok) {
     const body = await res.text()
@@ -66,6 +67,7 @@ export async function applyMigrations() {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ query: 'SELECT version FROM schema_migrations ORDER BY version' }),
+    signal: AbortSignal.timeout(10_000),
   })
   const listData = await listRes.json()
   const applied = new Set<string>(
