@@ -157,6 +157,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
   const [publisherFilter, setPublisherFilter] = useState<Set<string>>(new Set())
   const [yearFilter, setYearFilter] = useState<Set<number>>(new Set())
   const [titleFilter, setTitleFilter] = useState<Set<string>>(new Set())
+  const [groupBy, setGroupBy] = useState<'publisher' | 'visual'>('publisher')
 
   useEffect(() => {
     if (!book || !open) return
@@ -232,6 +233,20 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
   }, [filtered])
 
   const firstEditionKey = sorted[0]?.key ?? null
+
+  const publisherSections = useMemo(() => {
+    const normalizePublisher = (p: string | null) =>
+      p?.trim().toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ') ?? ''
+    const map = new Map<string, { label: string; groups: CoverGroup[] }>()
+    for (const group of sorted) {
+      const rep = bestEdition(group, formatFilter)
+      const norm = normalizePublisher(rep.publisher)
+      const key = norm || 'unknown'
+      if (!map.has(key)) map.set(key, { label: rep.publisher || 'Unknown publisher', groups: [] })
+      map.get(key)!.groups.push(group)
+    }
+    return Array.from(map.values())
+  }, [sorted, formatFilter])
 
   // Sort cover groups so visually similar covers appear adjacent:
   // covers with an OL cover_id sort by that ID (same scan batch = similar look),
@@ -350,11 +365,27 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
               <X className="h-3 w-3" /> Clear filters
             </button>
           )}
-          {!loading && (
-            <span className="ml-auto text-xs text-muted-foreground">
-              {sorted.length} edition{sorted.length !== 1 ? 's' : ''}
-            </span>
-          )}
+          <div className="ml-auto flex items-center gap-2">
+            <div className="flex gap-0 border rounded-md overflow-hidden text-xs">
+              <button
+                className={`px-2.5 py-1.5 transition-colors ${groupBy === 'publisher' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'}`}
+                onClick={() => setGroupBy('publisher')}
+              >
+                Publisher
+              </button>
+              <button
+                className={`px-2.5 py-1.5 transition-colors ${groupBy === 'visual' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'}`}
+                onClick={() => setGroupBy('visual')}
+              >
+                Visual
+              </button>
+            </div>
+            {!loading && (
+              <span className="text-xs text-muted-foreground">
+                {sorted.length} edition{sorted.length !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Grid */}
@@ -366,6 +397,67 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
           ) : sorted.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground text-sm">
               No editions found for this filter.
+            </div>
+          ) : groupBy === 'publisher' ? (
+            <div className="space-y-6 py-2">
+              {publisherSections.map(({ label, groups }) => (
+                <div key={label}>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 px-1">
+                    {label}
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                    {groups.map((group) => {
+                      const rep = bestEdition(group, formatFilter)
+                      const selIdx = selectedKeys.indexOf(group.key)
+                      const isSelected = selIdx !== -1
+                      const isPrimary = selIdx === 0
+                      const isFirstEdition = group.key === firstEditionKey
+                      return (
+                        <button
+                          key={group.key}
+                          onClick={() => toggleCard(group.key)}
+                          className={`relative rounded-lg p-2 text-left transition-all border-2 ${
+                            isPrimary ? 'border-amber-500 bg-amber-50' : isSelected ? 'border-primary bg-primary/5' : 'border-transparent hover:border-border'
+                          }`}
+                        >
+                          {isSelected && (
+                            <div className={`absolute top-2 right-2 rounded-full px-1.5 py-0.5 z-10 flex items-center gap-0.5 text-[10px] font-semibold leading-none ${isPrimary ? 'bg-amber-500 text-white' : 'bg-primary text-primary-foreground'}`}>
+                              {isPrimary && <Star className="h-2.5 w-2.5 fill-white" />}
+                              {isPrimary ? 'Top' : `#${selIdx + 1}`}
+                            </div>
+                          )}
+                          {isFirstEdition && !isSelected && (
+                            <div className="absolute top-2 right-2 bg-amber-400 rounded-full p-1 z-10" title="First edition">
+                              <Star className="h-3 w-3 text-white fill-white" />
+                            </div>
+                          )}
+                          <div className="aspect-[2/3] bg-muted rounded overflow-hidden mb-3 flex items-center justify-center">
+                            {group.cover_url ? (
+                              <img src={group.cover_url} alt={rep.title} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="text-center px-2">
+                                <div className="text-[10px] text-muted-foreground leading-tight line-clamp-3">{rep.publisher ?? 'No cover'}</div>
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-sm leading-snug space-y-1 min-h-[72px]">
+                            {rep.edition_name && <div className="font-medium text-foreground line-clamp-2">{rep.edition_name}</div>}
+                            <div className="text-muted-foreground">{rep.publish_year ?? ''}</div>
+                            {rep.pages && <div className="text-muted-foreground text-xs">{rep.pages} pp</div>}
+                            <div className="flex flex-wrap gap-1 pt-0.5">
+                              {group.formats.filter((f) => f !== 'any').map((f) => (
+                                <span key={f} className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground capitalize">
+                                  {f === 'hardcover' ? 'HC' : 'PB'}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 py-2">
