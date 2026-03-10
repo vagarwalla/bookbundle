@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { optimize } from '../optimizer'
-import type { CartItem, Listing } from '../types'
+import type { CartItem, Condition, Listing } from '../types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -13,11 +13,14 @@ function makeItem(overrides: Partial<CartItem> & { id: string }): CartItem {
     isbn_preferred: `isbn-${overrides.id}`,
     cover_url: null,
     format: 'any',
-    condition_min: 'like_new',
+    // Accept all four condition levels by default so most tests are unaffected
+    conditions: ['new', 'like_new', 'very_good', 'good'] as Condition[],
+    max_price: null,
     flexible: false,
     quantity: 1,
     sort_order: 0,
     created_at: '2024-01-01T00:00:00Z',
+    isbns_candidates: null,
     ...overrides,
   }
 }
@@ -121,14 +124,15 @@ describe('optimize', () => {
     expect(result.groups[0].seller_id).toBe('A')
   })
 
-  it('excludes listings that do not meet the minimum condition', () => {
-    const item = makeItem({ id: 'i1', isbn_preferred: 'isbn-1', condition_min: 'very_good' })
+  it('excludes listings that do not match the required conditions', () => {
+    // Item only accepts very_good condition
+    const item = makeItem({ id: 'i1', isbn_preferred: 'isbn-1', conditions: ['very_good'] })
 
     const listings = new Map([
       ['isbn-1', [
-        // Cheaper but condition is too low
+        // Too low
         makeListing({ seller_id: 'A', isbn: 'isbn-1', price: 3.00, condition: 'Good', condition_normalized: 'good' }),
-        // Meets the condition
+        // Meets condition
         makeListing({ seller_id: 'B', isbn: 'isbn-1', price: 7.00, condition: 'Very Good', condition_normalized: 'very_good' }),
       ]],
     ])
@@ -138,6 +142,74 @@ describe('optimize', () => {
     expect(result.groups).toHaveLength(1)
     expect(result.groups[0].seller_id).toBe('B')
     expect(result.groups[0].books_subtotal).toBe(7.00)
+  })
+
+  it('accepts any of several conditions when multiple are specified', () => {
+    const item = makeItem({ id: 'i1', isbn_preferred: 'isbn-1', conditions: ['like_new', 'very_good'] })
+
+    const listings = new Map([
+      ['isbn-1', [
+        makeListing({ seller_id: 'A', isbn: 'isbn-1', price: 3.00, condition_normalized: 'good' }),      // rejected
+        makeListing({ seller_id: 'B', isbn: 'isbn-1', price: 5.00, condition_normalized: 'very_good' }), // accepted
+        makeListing({ seller_id: 'C', isbn: 'isbn-1', price: 7.00, condition_normalized: 'like_new' }),  // accepted
+      ]],
+    ])
+
+    const result = optimize([item], listings)
+
+    // Should pick the cheaper of the two acceptable listings
+    expect(result.groups).toHaveLength(1)
+    expect(result.groups[0].seller_id).toBe('B')
+  })
+
+  it('excludes all listings when conditions array is empty', () => {
+    const item = makeItem({ id: 'i1', isbn_preferred: 'isbn-1', conditions: [] })
+    const listings = new Map([
+      ['isbn-1', [makeListing({ seller_id: 'A', isbn: 'isbn-1', price: 5.00 })]],
+    ])
+    const result = optimize([item], listings)
+    expect(result.groups).toHaveLength(0)
+  })
+
+  it('excludes listings above max_price', () => {
+    const item = makeItem({ id: 'i1', isbn_preferred: 'isbn-1', max_price: 6.00 })
+
+    const listings = new Map([
+      ['isbn-1', [
+        makeListing({ seller_id: 'A', isbn: 'isbn-1', price: 9.99 }), // too expensive
+        makeListing({ seller_id: 'B', isbn: 'isbn-1', price: 5.00 }), // within budget
+      ]],
+    ])
+
+    const result = optimize([item], listings)
+    expect(result.groups).toHaveLength(1)
+    expect(result.groups[0].seller_id).toBe('B')
+  })
+
+  it('includes listing exactly at max_price', () => {
+    const item = makeItem({ id: 'i1', isbn_preferred: 'isbn-1', max_price: 5.00 })
+    const listing = makeListing({ seller_id: 'A', isbn: 'isbn-1', price: 5.00 })
+    const result = optimize([item], new Map([['isbn-1', [listing]]]))
+    expect(result.groups).toHaveLength(1)
+  })
+
+  it('uses isbns_candidates to find listings when isbn_preferred has none', () => {
+    const item = makeItem({
+      id: 'i1',
+      isbn_preferred: 'isbn-primary',
+      isbns_candidates: ['isbn-alt1', 'isbn-alt2'],
+    })
+
+    // Only the candidate ISBNs have listings
+    const listings = new Map([
+      ['isbn-alt1', [makeListing({ seller_id: 'A', isbn: 'isbn-alt1', price: 8.00 })]],
+      ['isbn-alt2', [makeListing({ seller_id: 'B', isbn: 'isbn-alt2', price: 6.00 })]],
+    ])
+
+    const result = optimize([item], listings)
+    expect(result.groups).toHaveLength(1)
+    // Should pick the cheapest (B at $6)
+    expect(result.groups[0].seller_id).toBe('B')
   })
 
   it('respects quantity > 1 in subtotal and shipping', () => {
@@ -152,7 +224,7 @@ describe('optimize', () => {
   })
 
   it('produces no group for a book with no isbn', () => {
-    const item = makeItem({ id: 'i1', isbn_preferred: null as unknown as string })
+    const item = makeItem({ id: 'i1', isbn_preferred: null as unknown as string, isbns_candidates: null })
     const result = optimize([item], new Map())
     expect(result.groups).toHaveLength(0)
   })
@@ -164,9 +236,18 @@ describe('optimize', () => {
   })
 
   it('produces no group for a book where all listings fail the condition filter', () => {
-    const item = makeItem({ id: 'i1', isbn_preferred: 'isbn-1', condition_min: 'new' })
+    const item = makeItem({ id: 'i1', isbn_preferred: 'isbn-1', conditions: ['new'] })
     const listings = new Map([
       ['isbn-1', [makeListing({ seller_id: 'A', isbn: 'isbn-1', price: 5.00, condition_normalized: 'good' })]],
+    ])
+    const result = optimize([item], listings)
+    expect(result.groups).toHaveLength(0)
+  })
+
+  it('produces no group for a book where all listings exceed max_price', () => {
+    const item = makeItem({ id: 'i1', isbn_preferred: 'isbn-1', max_price: 3.00 })
+    const listings = new Map([
+      ['isbn-1', [makeListing({ seller_id: 'A', isbn: 'isbn-1', price: 5.00 })]],
     ])
     const result = optimize([item], listings)
     expect(result.groups).toHaveLength(0)

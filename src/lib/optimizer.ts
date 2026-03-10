@@ -98,17 +98,11 @@ export function optimize(
     }
   }
 
-  // Remaining unassigned: assign to globally cheapest listing.
-  // Fall back to raw (unfiltered) listings as an estimate if no condition-filtered ones exist.
+  // Remaining unassigned: assign to globally cheapest qualifying listing.
   for (const itemId of unassigned) {
     const bookOpt = bookOptions.find((b) => b.item.id === itemId)!
-    let listingsToUse = bookOpt.listings
-    if (listingsToUse.length === 0 && bookOpt.item.isbn_preferred) {
-      const raw = listingsByIsbn.get(bookOpt.item.isbn_preferred) ?? []
-      listingsToUse = [...raw].sort((a, b) => a.price - b.price)
-    }
-    if (listingsToUse.length > 0) {
-      assignment.set(itemId, { item: bookOpt.item, listing: listingsToUse[0] })
+    if (bookOpt.listings.length > 0) {
+      assignment.set(itemId, { item: bookOpt.item, listing: bookOpt.listings[0] })
     }
   }
 

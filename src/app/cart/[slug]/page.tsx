@@ -38,6 +38,7 @@ export default function CartPage({ params }: { params: Promise<{ slug: string }>
       ])
       if (!cartRes.ok) {
         toast.error('Cart not found')
+        setLoading(false)
         return
       }
       setCart(await cartRes.json())

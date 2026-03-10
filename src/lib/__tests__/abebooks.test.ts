@@ -88,114 +88,68 @@ beforeEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('fetchListingsByISBN — JSON path (__INITIAL_STATE__)', () => {
-  it('parses listings from window.__INITIAL_STATE__', async () => {
-    const state = {
-      inventory: {
-        listings: [
-          {
-            listing_id: 'abc123',
-            sellerId: 'SELLER1',
-            sellerName: 'Great Books',
-            bestPriceInPurchaseCurrency: 8.99,
-            shippingCost: 3.99,
-            condition: 'Like New',
-          },
-          {
-            listing_id: 'def456',
-            sellerId: 'SELLER2',
-            sellerName: 'Bargain Books',
-            bestPriceInPurchaseCurrency: 5.50,
-            shippingCost: 3.99,
-            condition: 'Very Good',
-          },
-        ],
-      },
-    }
+// Helper: build an AbeBooks HTML listing block matching the current data-attribute format
+function makeHtmlListing(opts: {
+  listingId: string
+  sellerId?: string
+  sellerName: string
+  price: string
+  shipping?: string
+  condition: string
+  href?: string
+}) {
+  const { listingId, sellerId, sellerName, price, shipping = '3.99', condition, href } = opts
+  const sfAttr = sellerId ? `href="/${sellerId}/${sellerId}/sf"` : ''
+  const hrefAttr = href ?? `href="/book/id/${listingId}/bd"`
+  // data-listingid must be inside the <li> content (not on the tag) for the regex to find it
+  return `<li data-test-id="listing-item">
+    <button data-listingid="${listingId}" data-csa-c-cost="${price}" data-csa-c-shipping-cost="${shipping}"></button>
+    <span data-test-id="listing-book-condition">${condition}</span>
+    <span class="seller-name">${sellerName}</span>
+    <a ${hrefAttr}></a>
+    ${sellerId ? `<a ${sfAttr}></a>` : ''}
+  </li>`
+}
 
-    mockFetch(
-      `<html><script>window.__INITIAL_STATE__ = ${JSON.stringify(state)};</script></html>`
-    )
-
-    const listings = await fetchListingsByISBN(ISBN)
-    expect(listings).toHaveLength(2)
-
-    expect(listings[0].seller_id).toBe('SELLER1')
-    expect(listings[0].seller_name).toBe('Great Books')
-    expect(listings[0].price).toBe(8.99)
-    expect(listings[0].condition_normalized).toBe('like_new')
-    expect(listings[0].isbn).toBe(ISBN)
-
-    expect(listings[1].seller_id).toBe('SELLER2')
-    expect(listings[1].price).toBe(5.50)
-    expect(listings[1].condition_normalized).toBe('very_good')
-  })
-
-  it('sets listing url to the AbeBooks isbn product page', async () => {
-    const state = {
-      inventory: {
-        listings: [{
-          listing_id: 'abc123',
-          sellerId: 'S1',
-          sellerName: 'S1',
-          bestPriceInPurchaseCurrency: 9.00,
-          shippingCost: 3.99,
-          condition: 'New',
-        }],
-      },
-    }
-    mockFetch(`<script>window.__INITIAL_STATE__ = ${JSON.stringify(state)};</script>`)
-    const [listing] = await fetchListingsByISBN(ISBN)
-    expect(listing.url).toContain(ISBN)
-  })
-
-  it('ignores raw listings with no price', async () => {
-    const state = {
-      inventory: {
-        listings: [
-          { listing_id: 'a', sellerId: 'S1', sellerName: 'S1', condition: 'Good' }, // no price
-          { listing_id: 'b', sellerId: 'S2', sellerName: 'S2', bestPriceInPurchaseCurrency: 7.00, condition: 'Good' },
-        ],
-      },
-    }
-    mockFetch(`<script>window.__INITIAL_STATE__ = ${JSON.stringify(state)};</script>`)
-    const listings = await fetchListingsByISBN(ISBN)
-    expect(listings).toHaveLength(1)
-    expect(listings[0].seller_id).toBe('S2')
-  })
-})
-
-describe('fetchListingsByISBN — HTML regex fallback', () => {
-  function makeHtmlListing(sellerId: string, sellerName: string, price: string, condition: string, listingId: string) {
-    return `<li data-seller-id="${sellerId}" data-seller-name="${sellerName}" data-listing-id="${listingId}">
-      <span class="item-price">$${price}</span>
-      <span class="item-binding">${condition}</span>
-    </li>`
-  }
-
+describe('fetchListingsByISBN — HTML parsing', () => {
   it('parses listings from HTML data attributes', async () => {
-    const html = `<ul>${makeHtmlListing('SELLER1', 'Good Reads', '12.99', 'Very Good', 'LID1')}</ul>`
+    const html = `<ul>${makeHtmlListing({ listingId: '11111111', sellerId: '99001', sellerName: 'Great Books', price: '8.99', shipping: '3.99', condition: 'Used - Like New' })}</ul>`
     mockFetch(html)
 
     const listings = await fetchListingsByISBN(ISBN)
-    expect(listings.length).toBeGreaterThanOrEqual(1)
+    expect(listings).toHaveLength(1)
 
     const l = listings[0]
-    expect(l.seller_id).toBe('SELLER1')
-    expect(l.seller_name).toBe('Good Reads')
-    expect(l.price).toBe(12.99)
-    expect(l.condition_normalized).toBe('very_good')
-    expect(l.listing_id).toBe('LID1')
-    expect(l.url).toContain('LID1')
+    expect(l.seller_name).toBe('Great Books')
+    expect(l.price).toBe(8.99)
+    expect(l.condition_normalized).toBe('like_new')
+    expect(l.isbn).toBe(ISBN)
+    expect(l.listing_id).toBe('11111111')
+  })
+
+  it('sets listing url from href attribute', async () => {
+    const html = makeHtmlListing({ listingId: '123456', sellerName: 'S1', price: '9.00', condition: 'New' })
+    mockFetch(html)
+    const [listing] = await fetchListingsByISBN(ISBN)
+    expect(listing.url).toContain('123456')
+  })
+
+  it('ignores listings with no price', async () => {
+    const withPrice = makeHtmlListing({ listingId: '11111', sellerName: 'S1', price: '7.00', condition: 'Good' })
+    // Listing with no data-csa-c-cost attribute
+    const noCost = `<li data-test-id="listing-item" data-listingid="22222"><span class="seller-name">S2</span></li>`
+    mockFetch(`<ul>${noCost}${withPrice}</ul>`)
+    const listings = await fetchListingsByISBN(ISBN)
+    expect(listings).toHaveLength(1)
+    expect(listings[0].listing_id).toBe('11111')
   })
 
   it('parses multiple listings', async () => {
     const html = `<ul>
-      ${makeHtmlListing('S1', 'Seller One', '5.00', 'Good', 'L1')}
-      ${makeHtmlListing('S2', 'Seller Two', '9.99', 'Like New', 'L2')}
+      ${makeHtmlListing({ listingId: 'L1', sellerName: 'Seller One', price: '5.00', condition: 'Good' })}
+      ${makeHtmlListing({ listingId: 'L2', sellerName: 'Seller Two', price: '9.99', condition: 'Like New' })}
     </ul>`
     mockFetch(html)
-
     const listings = await fetchListingsByISBN(ISBN)
     expect(listings).toHaveLength(2)
   })
@@ -214,12 +168,9 @@ describe('fetchListingsByISBN — error handling', () => {
     expect(listings).toHaveLength(0)
   })
 
-  it('returns a placeholder listing when HTML has no recognisable listings', async () => {
+  it('returns empty array when HTML has no recognisable listings', async () => {
     mockFetch('<html><body>No results found</body></html>')
     const listings = await fetchListingsByISBN(ISBN)
-    // Falls back to placeholder
-    expect(listings).toHaveLength(1)
-    expect(listings[0].seller_id).toBe('abebooks')
-    expect(listings[0].url).toContain(ISBN)
+    expect(listings).toHaveLength(0)
   })
 })
