@@ -291,7 +291,7 @@ export async function getEditions(workId: string, language = 'eng'): Promise<Edi
   // workId e.g. "/works/OL45804W"
   // Fetch up to 600 editions: first 300, then a second page if needed
   const page1Url = `${BASE}${workId}/editions.json?limit=300`
-  const page1Res = await fetch(page1Url, { next: { revalidate: 3600 } })
+  const page1Res = await fetch(page1Url, { next: { revalidate: 3600, tags: ['editions'] } })
   if (!page1Res.ok) return []
   const page1Data = await page1Res.json()
 
