@@ -9,7 +9,7 @@ export async function searchBooks(query: string): Promise<BookSearchResult[]> {
 
   const [olRes, gbRes] = await Promise.all([
     fetch(olUrl, { next: { revalidate: 3600 } }),
-    fetch(gbUrl, { next: { revalidate: 3600 } }).catch(() => null),
+    fetch(gbUrl, { cache: 'no-store' }).catch(() => null),
   ])
 
   if (!olRes.ok) return []
@@ -40,7 +40,11 @@ export async function searchBooks(query: string): Promise<BookSearchResult[]> {
       cover_url: doc.cover_i ? `${COVERS}/b/id/${doc.cover_i}-M.jpg` : null,
       first_publish_year: doc.first_publish_year as number | null,
       series: olSeriesName ?? gbMatch?.series ?? null,
-      series_number: olSeriesPos ?? gbMatch?.number ?? null,
+      series_number: olSeriesPos
+        ? String(parseInt(olSeriesPos))
+        : gbMatch?.number
+          ? String(parseInt(gbMatch.number))
+          : null,
     }
   })
 
@@ -153,7 +157,13 @@ type GBMatch = { series: string; number: string | null }
 function matchGB(olTitle: string, gbByTitle: Map<string, GBMatch>): GBMatch | null {
   const normOL = normalize(olTitle)
   for (const [normGB, match] of gbByTitle) {
-    if (normOL === normGB || normOL.includes(normGB) || normGB.includes(normOL)) return match
+    // Exact match
+    if (normOL === normGB) return match
+    // OL title is a suffix of GB title (e.g. GB "Lockwood & Co. 1: The Screaming Staircase")
+    if (normGB.endsWith(normOL) || normGB.endsWith(' ' + normOL)) return match
+    // Substring only if OL title is long enough to be unambiguous (>= 10 chars)
+    if (normOL.length >= 10 && normGB.includes(normOL)) return match
+    if (normGB.length >= 10 && normOL.includes(normGB)) return match
   }
   return null
 }
