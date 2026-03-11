@@ -308,7 +308,7 @@ function MultiSelectDropdown<T extends string | number>({
 }
 
 function EditionCard({
-  group, formatFilter, selectedKeys, firstEditionKey, onToggle, popularityMap,
+  group, formatFilter, selectedKeys, firstEditionKey, onToggle, popularityMap, onHover, onUnhover,
 }: {
   group: CoverGroup
   formatFilter: Format
@@ -316,7 +316,10 @@ function EditionCard({
   firstEditionKey: string | null
   onToggle: (key: string) => void
   popularityMap: Record<string, number>
+  onHover: (group: CoverGroup, rect: DOMRect) => void
+  onUnhover: () => void
 }) {
+  const ref = useRef<HTMLButtonElement>(null)
   const rep = bestEdition(group, formatFilter)
   const selIdx = selectedKeys.indexOf(group.key)
   const isSelected = selIdx !== -1
@@ -325,7 +328,10 @@ function EditionCard({
   const isDigitized = groupIsDigitized(group)
   return (
     <button
+      ref={ref}
       onClick={() => onToggle(group.key)}
+      onMouseEnter={() => ref.current && onHover(group, ref.current.getBoundingClientRect())}
+      onMouseLeave={onUnhover}
       className={`relative rounded-lg p-2 text-left transition-all border-2 ${isPrimary ? 'border-amber-500 bg-amber-50' : isSelected ? 'border-primary bg-primary/5' : 'border-transparent hover:border-border'}`}
     >
       {isSelected && (
@@ -375,6 +381,55 @@ function EditionCard({
   )
 }
 
+function EditionPreview({ group, rect }: { group: CoverGroup; rect: DOMRect }) {
+  const PANEL_W = 220
+  const PANEL_H = 320
+  const GAP = 8
+
+  // Position to the right of the card; flip left if it would overflow viewport
+  const vpW = typeof window !== 'undefined' ? window.innerWidth : 1200
+  const vpH = typeof window !== 'undefined' ? window.innerHeight : 800
+  let left = rect.right + GAP
+  if (left + PANEL_W > vpW - 8) left = rect.left - PANEL_W - GAP
+  let top = rect.top
+  if (top + PANEL_H > vpH - 8) top = vpH - PANEL_H - 8
+
+  const editions = group.editions.slice().sort((a, b) => {
+    const score = (e: typeof a) => (e.publish_year ? 1 : 0) + (e.publisher ? 1 : 0) + (e.pages ? 1 : 0)
+    return score(b) - score(a)
+  })
+
+  return (
+    <div
+      className="fixed z-[200] bg-popover text-popover-foreground shadow-xl rounded-xl ring-1 ring-foreground/10 p-3 flex flex-col gap-2 pointer-events-none"
+      style={{ left, top, width: PANEL_W }}
+    >
+      {group.cover_url && (
+        <img
+          src={group.cover_url}
+          alt=""
+          className="w-full rounded-md object-cover"
+          style={{ maxHeight: 140, objectPosition: 'top' }}
+        />
+      )}
+      <div className="space-y-2">
+        {editions.map((e) => (
+          <div key={e.isbn} className="text-xs space-y-0.5 border-b border-border last:border-0 pb-1.5 last:pb-0">
+            {e.edition_name && <div className="font-medium text-foreground">{e.edition_name}</div>}
+            {e.publisher && <div className="text-muted-foreground">{e.publisher}</div>}
+            <div className="flex gap-2 text-muted-foreground/80">
+              {e.publish_year && <span>{e.publish_year}</span>}
+              {e.pages && <span>{e.pages} pp</span>}
+              {e.format !== 'any' && <span className="capitalize">{e.format === 'hardcover' ? 'HC' : 'PB'}</span>}
+            </div>
+            <div className="font-mono text-muted-foreground/60">{e.isbn}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function SectionHeader({
   label, groups, selectedKeys, onToggleGroup,
 }: {
@@ -421,6 +476,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
   const [popularityMap, setPopularityMap] = useState<Record<string, number>>({})
   const [popularityLoading, setPopularityLoading] = useState(false)
   const [olReads, setOlReads] = useState<number | null>(null)
+  const [preview, setPreview] = useState<{ group: CoverGroup; rect: DOMRect } | null>(null)
 
   useEffect(() => {
     if (!book || !open) return
@@ -846,7 +902,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
                   <SectionHeader label={label} groups={groups} selectedKeys={selectedKeys} onToggleGroup={toggleGroup} />
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-3">
                     {groups.map((group) => (
-                      <EditionCard key={group.key} group={group} formatFilter={effectiveFormat} selectedKeys={selectedKeys} firstEditionKey={firstEditionKey} onToggle={toggleCard} popularityMap={popularityMap} />
+                      <EditionCard key={group.key} group={group} formatFilter={effectiveFormat} selectedKeys={selectedKeys} firstEditionKey={firstEditionKey} onToggle={toggleCard} popularityMap={popularityMap} onHover={(g, r) => setPreview({ group: g, rect: r })} onUnhover={() => setPreview(null)} />
                     ))}
                   </div>
                 </div>
@@ -881,7 +937,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
                     <SectionHeader label={sectionLabel} groups={section.groups} selectedKeys={selectedKeys} onToggleGroup={toggleGroup} />
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-3">
                       {section.groups.map((group) => (
-                        <EditionCard key={group.key} group={group} formatFilter={effectiveFormat} selectedKeys={selectedKeys} firstEditionKey={firstEditionKey} onToggle={toggleCard} popularityMap={popularityMap} />
+                        <EditionCard key={group.key} group={group} formatFilter={effectiveFormat} selectedKeys={selectedKeys} firstEditionKey={firstEditionKey} onToggle={toggleCard} popularityMap={popularityMap} onHover={(g, r) => setPreview({ group: g, rect: r })} onUnhover={() => setPreview(null)} />
                       ))}
                     </div>
                   </div>
@@ -942,6 +998,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
           </div>
         </div>
       </DialogContent>
+      {preview && <EditionPreview group={preview.group} rect={preview.rect} />}
     </Dialog>
   )
 }
