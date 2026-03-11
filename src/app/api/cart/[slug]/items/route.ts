@@ -9,7 +9,7 @@ function isMissingColumnError(msg: string) {
 }
 
 // Map old condition_min (single value) → new conditions (array)
-function normalizeItem(item: Record<string, unknown>) {
+export function normalizeItem(item: Record<string, unknown>) {
   if (!item.conditions && item.condition_min) {
     const min = item.condition_min as string
     const map: Record<string, string[]> = {
