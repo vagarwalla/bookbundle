@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'coverUrls required' }, { status: 400 })
   }
 
+  const force: boolean = body.force === true
   const coverUrls: string[] = [...new Set((body.coverUrls as string[]).map(normalize))]
 
   // 1. Fetch cached hashes
@@ -95,8 +96,8 @@ export async function POST(req: NextRequest) {
   const candidates = borderlinePairs(hashMap)
 
   if (candidates.length > 0) {
-    // Check similarity cache
-    const { data: cachedSim } = await supabase
+    // Check similarity cache (skipped when force=true)
+    const { data: cachedSim } = force ? { data: [] } : await supabase
       .from('cover_similarity')
       .select('cover_url_a, cover_url_b, is_same')
       .in('cover_url_a', candidates.map(p => p[0]))

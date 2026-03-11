@@ -6,30 +6,30 @@ import { conditionMeets, normalizeCondition, fetchListingsByISBN } from '../abeb
 describe('conditionMeets', () => {
   it('new satisfies every condition level', () => {
     expect(conditionMeets('new', 'new')).toBe(true)
-    expect(conditionMeets('new', 'like_new')).toBe(true)
-    expect(conditionMeets('new', 'very_good')).toBe(true)
+    expect(conditionMeets('new', 'fine')).toBe(true)
     expect(conditionMeets('new', 'good')).toBe(true)
+    expect(conditionMeets('new', 'fair')).toBe(true)
   })
 
-  it('like_new satisfies like_new and below, not new', () => {
-    expect(conditionMeets('like_new', 'new')).toBe(false)
-    expect(conditionMeets('like_new', 'like_new')).toBe(true)
-    expect(conditionMeets('like_new', 'very_good')).toBe(true)
-    expect(conditionMeets('like_new', 'good')).toBe(true)
+  it('fine satisfies fine and below, not new', () => {
+    expect(conditionMeets('fine', 'new')).toBe(false)
+    expect(conditionMeets('fine', 'fine')).toBe(true)
+    expect(conditionMeets('fine', 'good')).toBe(true)
+    expect(conditionMeets('fine', 'fair')).toBe(true)
   })
 
-  it('very_good satisfies very_good and good only', () => {
-    expect(conditionMeets('very_good', 'new')).toBe(false)
-    expect(conditionMeets('very_good', 'like_new')).toBe(false)
-    expect(conditionMeets('very_good', 'very_good')).toBe(true)
-    expect(conditionMeets('very_good', 'good')).toBe(true)
-  })
-
-  it('good satisfies only good', () => {
+  it('good satisfies good and fair, not above', () => {
     expect(conditionMeets('good', 'new')).toBe(false)
-    expect(conditionMeets('good', 'like_new')).toBe(false)
-    expect(conditionMeets('good', 'very_good')).toBe(false)
+    expect(conditionMeets('good', 'fine')).toBe(false)
     expect(conditionMeets('good', 'good')).toBe(true)
+    expect(conditionMeets('good', 'fair')).toBe(true)
+  })
+
+  it('fair satisfies only fair', () => {
+    expect(conditionMeets('fair', 'new')).toBe(false)
+    expect(conditionMeets('fair', 'fine')).toBe(false)
+    expect(conditionMeets('fair', 'good')).toBe(false)
+    expect(conditionMeets('fair', 'fair')).toBe(true)
   })
 })
 
@@ -42,29 +42,29 @@ describe('normalizeCondition', () => {
     expect(normalizeCondition('NEW')).toBe('new')
   })
 
-  it('maps "Like New" / "As New" / "Fine" → like_new', () => {
-    expect(normalizeCondition('Like New')).toBe('like_new')
-    expect(normalizeCondition('As New')).toBe('like_new')
-    expect(normalizeCondition('Fine')).toBe('like_new')
-    expect(normalizeCondition('LIKE NEW')).toBe('like_new')
+  it('maps "Like New" / "As New" / "Fine" / "Near Fine" → fine', () => {
+    expect(normalizeCondition('Like New')).toBe('fine')
+    expect(normalizeCondition('As New')).toBe('fine')
+    expect(normalizeCondition('Fine')).toBe('fine')
+    expect(normalizeCondition('Near Fine')).toBe('fine')
+    expect(normalizeCondition('LIKE NEW')).toBe('fine')
   })
 
-  it('maps "Very Good" → very_good', () => {
-    expect(normalizeCondition('Very Good')).toBe('very_good')
-    expect(normalizeCondition('Very Good+')).toBe('very_good')
-    expect(normalizeCondition('VERY GOOD')).toBe('very_good')
-  })
-
-  it('maps "Good" → good', () => {
+  it('maps "Very Good" and "Good" → good', () => {
+    expect(normalizeCondition('Very Good')).toBe('good')
+    expect(normalizeCondition('Very Good+')).toBe('good')
     expect(normalizeCondition('Good')).toBe('good')
     expect(normalizeCondition('Good+')).toBe('good')
-    expect(normalizeCondition('GOOD')).toBe('good')
+    expect(normalizeCondition('VERY GOOD')).toBe('good')
+  })
+
+  it('maps "Acceptable" / "Fair" / "Poor" → fair', () => {
+    expect(normalizeCondition('Acceptable')).toBe('fair')
+    expect(normalizeCondition('Fair')).toBe('fair')
+    expect(normalizeCondition('Poor')).toBe('fair')
   })
 
   it('defaults unknown strings to good', () => {
-    expect(normalizeCondition('Fair')).toBe('good')
-    expect(normalizeCondition('Poor')).toBe('good')
-    expect(normalizeCondition('Acceptable')).toBe('good')
     expect(normalizeCondition('')).toBe('good')
   })
 })
@@ -122,7 +122,7 @@ describe('fetchListingsByISBN — HTML parsing', () => {
     const l = listings[0]
     expect(l.seller_name).toBe('Great Books')
     expect(l.price).toBe(8.99)
-    expect(l.condition_normalized).toBe('like_new')
+    expect(l.condition_normalized).toBe('fine')
     expect(l.isbn).toBe(ISBN)
     expect(l.listing_id).toBe('11111111')
   })
@@ -157,7 +157,7 @@ describe('fetchListingsByISBN — HTML parsing', () => {
     mockFetch(html)
     const [listing] = await fetchListingsByISBN(ISBN)
     expect(listing.condition).toBe('Very good')
-    expect(listing.condition_normalized).toBe('very_good')
+    expect(listing.condition_normalized).toBe('good')
   })
 
   it('falls back to listing-book-condition when optional condition is absent', async () => {
@@ -165,7 +165,7 @@ describe('fetchListingsByISBN — HTML parsing', () => {
     mockFetch(html)
     const [listing] = await fetchListingsByISBN(ISBN)
     expect(listing.condition).toBe('Used - Like New')
-    expect(listing.condition_normalized).toBe('like_new')
+    expect(listing.condition_normalized).toBe('fine')
   })
 
   it('parses multiple listings', async () => {
