@@ -119,6 +119,28 @@ function BookListings({
   )
 }
 
+// ─── Cover thumbnail with ISBN fallback ──────────────────────────────────────
+
+function CoverThumb({ url, isbn }: { url: string | null; isbn: string }) {
+  const [failed, setFailed] = useState(false)
+  const src = url ?? `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`
+  if (failed) {
+    return (
+      <div className="w-10 h-14 bg-muted rounded shrink-0 flex items-center justify-center text-[10px] text-muted-foreground text-center leading-tight px-0.5">
+        No cover
+      </div>
+    )
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      className="w-10 h-14 object-cover rounded shrink-0"
+      onError={() => setFailed(true)}
+    />
+  )
+}
+
 // ─── Edition picker (inline) ─────────────────────────────────────────────────
 
 function EditionPickerInline({
@@ -257,18 +279,7 @@ function EditionPickerInline({
                 setSelected(next)
               }}
             />
-            {ed.cover_url ? (
-              <img
-                src={ed.cover_url}
-                alt=""
-                className="w-10 h-14 object-cover rounded shrink-0"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-              />
-            ) : (
-              <div className="w-10 h-14 bg-muted rounded shrink-0 flex items-center justify-center text-[10px] text-muted-foreground text-center leading-tight px-0.5">
-                No cover
-              </div>
-            )}
+            <CoverThumb url={ed.cover_url} isbn={ed.isbn} />
             <span className="text-xs leading-snug flex-1 min-w-0">
               <span className="font-medium block truncate">{ed.publisher ?? 'Unknown publisher'}</span>
               <span className="text-muted-foreground">
