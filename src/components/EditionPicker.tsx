@@ -1,10 +1,63 @@
 'use client'
 
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { Loader2, Star, ChevronDown, X, Check } from 'lucide-react'
+import { Loader2, Star, ChevronDown, X, Check, RefreshCw, Sparkles } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import type { BookSearchResult, Edition, Format } from '@/lib/types'
+
+// ─── Popularity helpers ───────────────────────────────────────────────────────
+
+/** Scale OCLC library-holdings count to a 0–50 Tier-2 score */
+function tier2Score(isbn: string, popularityMap: Record<string, number>): number {
+  const h = popularityMap[isbn] ?? -1
+  if (h < 0) return 0   // not yet fetched
+  if (h <= 1) return 0
+  if (h < 10) return 10
+  if (h < 100) return 20
+  if (h < 1000) return 30
+  if (h < 10000) return 40
+  return 50
+}
+
+function combinedScore(edition: Edition, popularityMap: Record<string, number>): number {
+  return edition.popularity_score + tier2Score(edition.isbn, popularityMap)
+}
+
+function groupCombinedScore(group: CoverGroup, popularityMap: Record<string, number>): number {
+  return Math.max(...group.editions.map((e) => combinedScore(e, popularityMap)))
+}
+
+function scoreToDots(score: number): number {
+  if (score <= 20) return 1
+  if (score <= 45) return 2
+  if (score <= 70) return 3
+  if (score <= 95) return 4
+  return 5
+}
+
+function PopularityDots({ score, loading }: { score: number; loading: boolean }) {
+  if (loading) {
+    return (
+      <div className="flex gap-0.5 pt-1">
+        <div className="h-1.5 w-10 rounded bg-muted animate-pulse" />
+      </div>
+    )
+  }
+  const dots = scoreToDots(score)
+  return (
+    <div className="flex gap-0.5 pt-1" title={`Popularity estimate: ${dots}/5`}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <div
+          key={i}
+          className={`h-1.5 w-1.5 rounded-full ${i <= dots ? 'bg-amber-400' : 'bg-muted'}`}
+        />
+      ))}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface Props {
   book: BookSearchResult | null
@@ -480,18 +533,17 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
     return Array.from(map.values())
   }, [sorted, formatFilter])
 
-  useEffect(() => {
-    if (groupBy !== 'visual' || coverGroups.length === 0 || Object.keys(clusterMap).length > 0 || hashesLoading) return
+  function fetchClusters(force = false) {
     const coverUrls = [...new Set(
       coverGroups.map((g) => g.cover_url).filter((u): u is string => u !== null)
     )]
     if (coverUrls.length === 0) return
-
+    setClusterMap({})
     setHashesLoading(true)
     fetch('/api/cover-hashes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ coverUrls }),
+      body: JSON.stringify({ coverUrls, force }),
     })
       .then((r) => r.json())
       .then((data: { clusters: Record<string, string> }) => {
@@ -499,7 +551,13 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
         setHashesLoading(false)
       })
       .catch(() => setHashesLoading(false))
-  }, [groupBy, coverGroups, clusterMap, hashesLoading])
+  }
+
+  useEffect(() => {
+    if (groupBy !== 'visual' || coverGroups.length === 0 || Object.keys(clusterMap).length > 0 || hashesLoading) return
+    fetchClusters()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupBy, coverGroups])
 
   const visualSorted = useMemo(() => {
     const hasClusterData = Object.keys(clusterMap).length > 0
@@ -673,6 +731,9 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
                 {groupBy === 'visual' && hashesLoading && (
                   <Loader2 className="h-3 w-3 animate-spin" />
                 )}
+                {groupBy === 'visual' && !hashesLoading && Object.keys(clusterMap).length > 0 && (
+                  <Sparkles className="h-3 w-3" />
+                )}
               </button>
             </div>
             {!loading && (
@@ -712,6 +773,21 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
             </div>
           ) : (
             <div className="space-y-4 py-2">
+            {!hashesLoading && Object.keys(clusterMap).length > 0 && (
+              <div className="flex items-center justify-between px-1">
+                <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Sparkles className="h-3.5 w-3.5 text-primary" />
+                  Grouped by AI visual similarity
+                </span>
+                <button
+                  onClick={() => fetchClusters(true)}
+                  className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Redo AI grouping
+                </button>
+              </div>
+            )}
             <div className="space-y-4">
               {visualSections.map((section, sectionIdx) => {
                 const sectionLabel = `Cover design ${sectionIdx + 1}`
