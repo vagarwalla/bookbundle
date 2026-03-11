@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { CreateCartDialog } from '@/components/CreateCartDialog'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import type { Cart } from '@/lib/types'
 
 export default function HomePage() {
@@ -42,16 +43,19 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-white sticky top-0 z-10">
+      <header className="border-b bg-background sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <BookOpen className="h-6 w-6 text-primary" />
             <span className="text-xl font-semibold">Earmarked</span>
           </div>
-          <Button onClick={() => setOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Cart
-          </Button>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <Button onClick={() => setOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Cart
+            </Button>
+          </div>
         </div>
       </header>
 

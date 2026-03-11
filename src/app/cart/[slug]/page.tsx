@@ -13,6 +13,7 @@ import { CoverPicker } from '@/components/CoverPicker'
 import { CartItemCard } from '@/components/CartItemCard'
 import { OptimizationPanel } from '@/components/OptimizationPanel'
 import { CartDefaults } from '@/components/CartDefaults'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import type { Cart, CartItem, BookSearchResult, Edition } from '@/lib/types'
 
 function primaryEdition(editions: Edition[]): Edition { return editions[0] }
@@ -194,7 +195,7 @@ export default function CartPage({ params }: { params: Promise<{ slug: string }>
   return (
     <main className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-white sticky top-0 z-10">
+      <header className="border-b bg-background sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
           <Link href="/">
             <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -206,6 +207,7 @@ export default function CartPage({ params }: { params: Promise<{ slug: string }>
             <h1 className="font-semibold text-base leading-tight">{cart.name}</h1>
             <p className="text-xs text-muted-foreground">{items.length} book{items.length !== 1 ? 's' : ''}</p>
           </div>
+          <ThemeToggle />
           <Button
             variant="ghost"
             size="icon"
