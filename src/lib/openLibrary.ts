@@ -308,6 +308,11 @@ function deriveEditionName(title: string): string | null {
   return match ? match[1] : null
 }
 
+/** Detect titles written in non-Latin scripts (CJK, Cyrillic, Arabic, Hebrew, Greek, Hindi, Thai…) */
+function hasNonLatinScript(text: string): boolean {
+  return /[\u0400-\u04FF\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF\u0600-\u06FF\u0590-\u05FF\u0900-\u097F\u0386-\u03CE\u0E00-\u0E7F]/.test(text)
+}
+
 function computePopularityScore(params: {
   ocaid: string | null
   coverId: number | null
@@ -378,7 +383,8 @@ export async function getEditions(workId: string, language = 'eng'): Promise<Edi
   const data = { entries: allEntries }
 
   const confirmed: Edition[] = []
-  const needsVerification: Array<{ isbn: string; entry: Record<string, unknown>; coverId: number | null; coverUrl: string | null }> = []
+  // Track ISBNs that had no OL language tag — needs GB verification
+  const langUnknownIsbns = new Set<string>()
   const seenIsbns = new Set<string>()
 
   for (const entry of data.entries || []) {
@@ -398,25 +404,22 @@ export async function getEditions(workId: string, language = 'eng'): Promise<Edi
     if (language) {
       const langs = (entry.languages as { key: string }[]) || []
       if (langs.length > 0) {
+        // OL has explicit language data — exclude if it doesn't match, no exceptions
         const matchesLanguage = langs.some((l) => l.key === `/languages/${language}`)
-        if (!matchesLanguage) {
-          // Wrong language — but keep it if it has cover art (include in English view)
-          if (coverId) confirmed.push(buildEdition(isbn, entry, coverId, coverUrl))
-          continue
-        }
+        if (!matchesLanguage) continue
         confirmed.push(buildEdition(isbn, entry, coverId, coverUrl))
       } else {
-        // No OL language data — include with benefit of the doubt; queue for GB cover lookup
-        needsVerification.push({ isbn, entry, coverId, coverUrl })
+        // No OL language tag — apply heuristics before including
+        const title = (entry.title as string) || ''
+        // Non-Latin scripts (Cyrillic, CJK, Arabic, Hebrew, Greek, Hindi, etc.) are
+        // a reliable signal this is not an English edition
+        if (hasNonLatinScript(title)) continue
+        confirmed.push(buildEdition(isbn, entry, coverId, coverUrl))
+        langUnknownIsbns.add(isbn)
       }
     } else {
       confirmed.push(buildEdition(isbn, entry, coverId, coverUrl))
     }
-  }
-
-  // Editions with no OL language tag: include all — covers handled by back-fill below
-  for (const { isbn, entry, coverId, coverUrl } of needsVerification) {
-    confirmed.push(buildEdition(isbn, entry, coverId, coverUrl))
   }
 
   // Back-fill missing critical fields: cover, year, publisher, format
@@ -428,7 +431,9 @@ export async function getEditions(workId: string, language = 'eng'): Promise<Edi
       if (olChecks[i]) noCoverEditions[i].cover_url = olChecks[i]
     }
   }
-  // Step 2: call GB for any edition missing cover, year, publisher, or format — one call fills all gaps
+  // Step 2: call GB for any edition missing cover, year, publisher, or format — one call fills all gaps.
+  // Also collect language data so we can post-filter no-language-tag editions.
+  const gbLanguages = new Map<string, string | null>()
   const needsGB = confirmed.filter((e) => !e.cover_url || !e.publish_year || !e.publisher || e.format === 'any')
   if (needsGB.length > 0) {
     const gbInfos = await Promise.all(needsGB.map((e) => fetchGoogleBooksInfo(e.isbn)))
@@ -439,7 +444,29 @@ export async function getEditions(workId: string, language = 'eng'): Promise<Edi
       if (!e.publish_year && gb.publishYear) e.publish_year = gb.publishYear
       if (!e.publisher && gb.publisher) e.publisher = gb.publisher
       if (e.format === 'any' && gb.format) e.format = gb.format
+      if (langUnknownIsbns.has(e.isbn)) gbLanguages.set(e.isbn, gb.language)
     }
+  }
+
+  // Step 3: for no-language-tag editions not already checked above, call GB just for language
+  const targetGBLang = OL_TO_GB_LANG[language] ?? null
+  if (language && langUnknownIsbns.size > 0) {
+    const needsLangCheck = confirmed.filter(
+      (e) => langUnknownIsbns.has(e.isbn) && !gbLanguages.has(e.isbn)
+    )
+    if (needsLangCheck.length > 0) {
+      const langInfos = await Promise.all(needsLangCheck.map((e) => fetchGoogleBooksInfo(e.isbn)))
+      for (let i = 0; i < needsLangCheck.length; i++) {
+        gbLanguages.set(needsLangCheck[i].isbn, langInfos[i].language)
+      }
+    }
+    // Remove no-language-tag editions that GB confirms are non-English
+    return confirmed.filter((e) => {
+      if (!langUnknownIsbns.has(e.isbn)) return true
+      const gbLang = gbLanguages.get(e.isbn)
+      if (!gbLang) return true  // GB also has no language data — include (benefit of the doubt)
+      return gbLang === targetGBLang
+    })
   }
 
   return confirmed
