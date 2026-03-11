@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { getCoverUrl, detectFormat, searchBooks, getEditions } from '../openLibrary'
+import { getCoverUrl, detectFormat, searchBooks, getEditions, hasNonLatinScript, isAudioEdition, isNonEnglishIsbn } from '../openLibrary'
 
 beforeEach(() => {
   vi.unstubAllGlobals()
@@ -606,5 +606,225 @@ describe('searchBooks — GB series extraction', () => {
 
     const results = await searchBooks('The Lord of the Rings')
     expect(results[0].series).toBeNull()
+  })
+})
+
+// ── hasNonLatinScript ─────────────────────────────────────────────────────────
+
+describe('hasNonLatinScript', () => {
+  it('detects Cyrillic', () => {
+    expect(hasNonLatinScript('Гарри Поттер')).toBe(true)
+  })
+
+  it('detects CJK (Chinese/Japanese/Korean)', () => {
+    expect(hasNonLatinScript('哈利·波特')).toBe(true)
+    expect(hasNonLatinScript('ハリー・ポッター')).toBe(true)
+    expect(hasNonLatinScript('해리 포터')).toBe(true)
+  })
+
+  it('detects Arabic', () => {
+    expect(hasNonLatinScript('هاري بوتر')).toBe(true)
+  })
+
+  it('detects Hebrew', () => {
+    expect(hasNonLatinScript('הארי פוטר')).toBe(true)
+  })
+
+  it('detects Greek', () => {
+    expect(hasNonLatinScript('Χάρι Πότερ')).toBe(true)
+  })
+
+  it('detects Hindi (Devanagari)', () => {
+    expect(hasNonLatinScript('हैरी पॉटर')).toBe(true)
+  })
+
+  it('returns false for plain English titles', () => {
+    expect(hasNonLatinScript('Harry Potter and the Sorcerer\'s Stone')).toBe(false)
+  })
+
+  it('returns false for Latin-script European titles', () => {
+    expect(hasNonLatinScript('Harry Potter et la pierre philosophale')).toBe(false)
+    expect(hasNonLatinScript('Harry Potter und der Stein der Weisen')).toBe(false)
+  })
+
+  it('returns false for empty string', () => {
+    expect(hasNonLatinScript('')).toBe(false)
+  })
+})
+
+// ── isAudioEdition ────────────────────────────────────────────────────────────
+
+describe('isAudioEdition', () => {
+  it('detects "Audio CD" in title', () => {
+    expect(isAudioEdition({ title: 'Harry Potter Audio CD' })).toBe(true)
+  })
+
+  it('detects "Audiobook" in title', () => {
+    expect(isAudioEdition({ title: 'Percy Jackson Audiobook' })).toBe(true)
+  })
+
+  it('detects "Unabridged" in title', () => {
+    expect(isAudioEdition({ title: 'Dune (Unabridged)' })).toBe(true)
+  })
+
+  it('detects "Abridged" in title', () => {
+    expect(isAudioEdition({ title: 'Dune (Abridged)' })).toBe(true)
+  })
+
+  it('detects "Cassette" in physical_format', () => {
+    expect(isAudioEdition({ title: 'Dune', physical_format: 'Cassette' })).toBe(true)
+  })
+
+  it('detects "Compact Disc" in physical_format', () => {
+    expect(isAudioEdition({ title: 'Dune', physical_format: 'Compact Disc' })).toBe(true)
+  })
+
+  it('detects audio publisher name', () => {
+    expect(isAudioEdition({ title: 'Dune', publishers: ['Brilliance Audio'] })).toBe(true)
+    expect(isAudioEdition({ title: 'Dune', publishers: ['Listening Library Audio'] })).toBe(true)
+  })
+
+  it('detects "Audio" in edition_name', () => {
+    expect(isAudioEdition({ title: 'Dune', edition_name: 'Audio Edition' })).toBe(true)
+  })
+
+  it('returns false for a regular print edition', () => {
+    expect(isAudioEdition({ title: 'Harry Potter and the Sorcerer\'s Stone', publishers: ['Scholastic'], physical_format: 'Paperback' })).toBe(false)
+  })
+
+  it('returns false when all fields are absent', () => {
+    expect(isAudioEdition({})).toBe(false)
+  })
+
+  it('is case-insensitive', () => {
+    expect(isAudioEdition({ title: 'AUDIOBOOK EDITION' })).toBe(true)
+    expect(isAudioEdition({ physical_format: 'audio cd' })).toBe(true)
+  })
+})
+
+// ── isNonEnglishIsbn ──────────────────────────────────────────────────────────
+
+describe('isNonEnglishIsbn', () => {
+  it('returns false for group-0 English ISBNs (US/UK)', () => {
+    expect(isNonEnglishIsbn('9780439708180')).toBe(false) // Harry Potter Scholastic
+    expect(isNonEnglishIsbn('9780441013593')).toBe(false) // Dune Ace Books
+  })
+
+  it('returns false for group-1 English ISBNs', () => {
+    expect(isNonEnglishIsbn('9781338878929')).toBe(false)
+  })
+
+  it('returns true for group-2 French ISBNs', () => {
+    expect(isNonEnglishIsbn('9782070360024')).toBe(true) // Dune Gallimard
+  })
+
+  it('returns true for group-3 German ISBNs', () => {
+    expect(isNonEnglishIsbn('9783551551672')).toBe(true) // German Carlsen
+  })
+
+  it('returns true for group-4 Japanese ISBNs', () => {
+    expect(isNonEnglishIsbn('9784003230114')).toBe(true)
+  })
+
+  it('returns true for group-5 Russian ISBNs', () => {
+    expect(isNonEnglishIsbn('9785389077164')).toBe(true)
+  })
+
+  it('returns true for group-84 Spanish ISBNs', () => {
+    expect(isNonEnglishIsbn('9788478886296')).toBe(true) // Spanish Salamandra
+  })
+
+  it('returns true for group-88 Italian ISBNs', () => {
+    expect(isNonEnglishIsbn('9788804606864')).toBe(true) // Italian Mondadori
+  })
+
+  it('returns true for group-90 Dutch ISBNs', () => {
+    expect(isNonEnglishIsbn('9789045015842')).toBe(true)
+  })
+
+  it('returns false for ISBN-10 (not 13 digits)', () => {
+    expect(isNonEnglishIsbn('0439708184')).toBe(false)
+  })
+
+  it('handles ISBNs with hyphens', () => {
+    expect(isNonEnglishIsbn('978-2-07-036002-4')).toBe(true)  // French with hyphens
+    expect(isNonEnglishIsbn('978-0-439-70818-0')).toBe(false) // English with hyphens
+  })
+})
+
+// ── getEditions — audio and non-English filtering ─────────────────────────────
+
+describe('getEditions — edition filtering', () => {
+  it('excludes audio editions regardless of language tag', async () => {
+    const mockResponse = {
+      entries: [
+        {
+          title: 'Percy Jackson Audiobook',
+          isbn_13: ['9780807826157'],
+          publishers: ['Listening Library'],
+          physical_format: 'Audio CD',
+          languages: [{ key: '/languages/eng' }],
+        },
+        {
+          title: 'Percy Jackson and the Lightning Thief',
+          isbn_13: ['9780786838653'],
+          publishers: ['Hyperion'],
+          physical_format: 'Hardcover',
+          languages: [{ key: '/languages/eng' }],
+        },
+      ],
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(mockResponse) }))
+
+    const editions = await getEditions('/works/OL3366094W', 'eng')
+    expect(editions).toHaveLength(1)
+    expect(editions[0].isbn).toBe('9780786838653')
+  })
+
+  it('excludes editions with non-Latin script titles (no OL language tag)', async () => {
+    const mockResponse = {
+      entries: [
+        {
+          title: '哈利·波特', // Chinese — no language tag
+          isbn_13: ['9787020033430'],
+          publishers: ['People\'s Literature Publishing House'],
+        },
+        {
+          title: 'Harry Potter and the Sorcerer\'s Stone',
+          isbn_13: ['9780439708180'],
+          publishers: ['Scholastic'],
+          languages: [{ key: '/languages/eng' }],
+        },
+      ],
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(mockResponse) }))
+
+    const editions = await getEditions('/works/OL82563W', 'eng')
+    expect(editions).toHaveLength(1)
+    expect(editions[0].isbn).toBe('9780439708180')
+  })
+
+  it('excludes no-language-tag editions whose ISBN is in a non-English registration group', async () => {
+    const mockResponse = {
+      entries: [
+        {
+          title: 'Harry Potter y la piedra filosofal', // Spanish, no OL language tag
+          isbn_13: ['9788478886296'], // group 84 = Spain
+          publishers: ['Salamandra'],
+          // no languages field
+        },
+        {
+          title: 'Harry Potter and the Sorcerer\'s Stone',
+          isbn_13: ['9780439708180'], // group 0 = English
+          publishers: ['Scholastic'],
+          languages: [{ key: '/languages/eng' }],
+        },
+      ],
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(mockResponse) }))
+
+    const editions = await getEditions('/works/OL82563W', 'eng')
+    expect(editions).toHaveLength(1)
+    expect(editions[0].isbn).toBe('9780439708180')
   })
 })

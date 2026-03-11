@@ -309,33 +309,18 @@ function deriveEditionName(title: string): string | null {
 }
 
 /** Detect titles written in non-Latin scripts (CJK, Cyrillic, Arabic, Hebrew, Greek, Hindi, Thai…) */
-function hasNonLatinScript(text: string): boolean {
+export function hasNonLatinScript(text: string): boolean {
   return /[\u0400-\u04FF\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF\u0600-\u06FF\u0590-\u05FF\u0900-\u097F\u0386-\u03CE\u0E00-\u0E7F]/.test(text)
 }
 
 /** Return true if this OL entry appears to be an audio edition (audiobook, CD, cassette, etc.) */
-function isAudioEdition(entry: Record<string, unknown>): boolean {
+export function isAudioEdition(entry: Record<string, unknown>): boolean {
   const AUDIO_RE = /\baudio\b|audiobook|audio\s*cd|compact\s*disc|cassette|unabridged|abridged|\bmp3\b|\bcd\b/i
   const title = (entry.title as string) ?? ''
   const publisher = (entry.publishers as string[] | undefined)?.[0] ?? ''
   const physFormat = (entry.physical_format as string) ?? ''
   const editionName = (entry.edition_name as string) ?? ''
   return AUDIO_RE.test(title) || AUDIO_RE.test(publisher) || AUDIO_RE.test(physFormat) || AUDIO_RE.test(editionName)
-}
-
-/**
- * Return true if the publisher name is clearly from a non-English-speaking country.
- * Two signals:
- *   1. Non-Latin script in the publisher name (Cyrillic, CJK, Arabic, etc.)
- *   2. Structural words that are only used in non-English publisher names
- *      (Verlag, Editorial, Edizioni, Uitgeverij, etc.)
- */
-function isForeignPublisher(publisher: string): boolean {
-  if (!publisher) return false
-  if (hasNonLatinScript(publisher)) return true
-  // Language-specific structural words that appear in publisher names
-  const FOREIGN_PUB_RE = /\bverlag(s|sgesellschaft|sgruppe|shandelei)?\b|\bedit(?:ore|ori|iones|ioni|orial|oriale|oriales|oras?|eurs?|ions?|rice)\b|\buitgeverij\b|\buitgevers\b|\bwydawnictwo\b|\bforlaget?\b|\bkustannus\b|\bförlag\b/i
-  return FOREIGN_PUB_RE.test(publisher)
 }
 
 /**
@@ -354,7 +339,7 @@ const NON_ENGLISH_ISBN13_PREFIXES = [
   '978975', '978980', '978985', '978986', '978987', '978989',
 ]
 
-function isNonEnglishIsbn(isbn: string): boolean {
+export function isNonEnglishIsbn(isbn: string): boolean {
   const digits = isbn.replace(/\D/g, '')
   if (digits.length !== 13) return false
   return NON_ENGLISH_ISBN13_PREFIXES.some((p) => digits.startsWith(p))
@@ -450,12 +435,6 @@ export async function getEditions(workId: string, language = 'eng'): Promise<Edi
 
     // Skip audio editions regardless of language
     if (isAudioEdition(entry)) continue
-
-    // Publisher name check applies to all editions — if the publisher is clearly
-    // a non-English-speaking-country publisher, exclude it even if the language
-    // tag is missing or ambiguous
-    const publisher = (entry.publishers as string[] | undefined)?.[0] ?? ''
-    if (language && isForeignPublisher(publisher)) continue
 
     if (language) {
       const langs = (entry.languages as { key: string }[]) || []
