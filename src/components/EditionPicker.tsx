@@ -7,6 +7,36 @@ import { Button } from '@/components/ui/button'
 import type { BookSearchResult, Condition, Edition, Format, Listing } from '@/lib/types'
 import { CONDITION_ORDER, CONDITION_LABELS } from '@/lib/relaxation'
 
+// ─── Listings cache (localStorage, 2-hour TTL) ───────────────────────────────
+
+const CACHE_TTL_MS = 2 * 60 * 60 * 1000
+
+function getCachedListings(workId: string): { listings: Record<string, Listing[]>; fetchedAt: number } | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(`earmarked_listings_${workId}`)
+    if (!raw) return null
+    const parsed: { listings: Record<string, Listing[]>; fetchedAt: number } = JSON.parse(raw)
+    if (Date.now() - parsed.fetchedAt > CACHE_TTL_MS) return null
+    return parsed
+  } catch { return null }
+}
+
+function setCachedListings(workId: string, listings: Record<string, Listing[]>) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(`earmarked_listings_${workId}`, JSON.stringify({ listings, fetchedAt: Date.now() }))
+  } catch {}
+}
+
+function relativeTime(ts: number): string {
+  const secs = Math.floor((Date.now() - ts) / 1000)
+  if (secs < 60) return 'just now'
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) return `${mins}m ago`
+  return `${Math.floor(mins / 60)}h ago`
+}
+
 // ─── Popularity helpers ───────────────────────────────────────────────────────
 
 /** Scale OCLC library-holdings count to a 0–50 Tier-2 score */
@@ -522,6 +552,9 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
   const [olReads, setOlReads] = useState<number | null>(null)
   const [hoveredGroup, setHoveredGroup] = useState<CoverGroup | null>(null)
   const [listingStats, setListingStats] = useState<Record<string, Exclude<EditionStats, undefined>>>({})
+  const [lastFetchedAt, setLastFetchedAt] = useState<number | null>(null)
+  const [statsLoading, setStatsLoading] = useState(false)
+  const [, setTick] = useState(0)
   const [hideNoListings, setHideNoListings] = useState(true)
 
   useEffect(() => {
@@ -539,6 +572,8 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
     setPopularityLoading(false)
     setOlReads(null)
     setListingStats({})
+    setLastFetchedAt(null)
+    setStatsLoading(false)
     setHideNoListings(true)
     fetch(`/api/editions?workId=${encodeURIComponent(book.work_id)}&language=${language}`)
       .then((r) => r.json())
@@ -580,44 +615,72 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
       .catch(() => setPopularityLoading(false))
   }, [editions])
 
-  // Fetch AbeBooks listing counts + per-condition breakdown per cover group
+  // Tick every 30s to keep "X min ago" display live
   useEffect(() => {
-    if (editions.length === 0) return
+    if (!lastFetchedAt) return
+    const id = setInterval(() => setTick((t) => t + 1), 30_000)
+    return () => clearInterval(id)
+  }, [lastFetchedAt])
+
+  async function loadStats(force: boolean) {
+    if (editions.length === 0 || !book) return
+    const activeConditions = itemConditions ?? CONDITION_ORDER
     const groups = groupEditionsBycover(editions)
     const allIsbns = [...new Set(editions.map((e) => e.isbn))]
-    const activeConditions = itemConditions ?? CONDITION_ORDER
-    fetch('/api/prices', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isbns: allIsbns }),
-    })
-      .then((r) => r.json())
-      .then((data: { listings: Record<string, Listing[]> }) => {
-        const byIsbn = data.listings ?? {}
-        const stats: Record<string, Exclude<EditionStats, undefined>> = {}
-        for (const group of groups) {
-          const groupListings = group.editions.flatMap((e) => byIsbn[e.isbn] ?? [])
-          const qualifying = groupListings.filter((l) => activeConditions.includes(l.condition_normalized))
-          if (qualifying.length === 0) {
-            stats[group.key] = null
-            continue
-          }
-          // Primary ISBN = one with most qualifying listings (for total link)
-          const isbnCounts = new Map<string, number>()
-          for (const l of qualifying) isbnCounts.set(l.isbn, (isbnCounts.get(l.isbn) ?? 0) + 1)
-          const primaryIsbn = [...isbnCounts.entries()].reduce((a, b) => b[1] > a[1] ? b : a)[0]
-          // Per-condition breakdown in condition-order
-          const byCondition: ConditionStat[] = activeConditions.flatMap((cond) => {
-            const condListings = qualifying.filter((l) => l.condition_normalized === cond)
-            if (condListings.length === 0) return []
-            const cheapest = condListings.reduce((a, b) => a.price <= b.price ? a : b)
-            return [{ condition: cond, count: condListings.length, cheapest: cheapest.price, url: cheapest.url }]
-          })
-          stats[group.key] = { count: qualifying.length, primaryIsbn, byCondition }
-        }
-        setListingStats(stats)
+
+    let byIsbn: Record<string, Listing[]>
+    let fetchedAt: number
+
+    if (!force) {
+      const cached = getCachedListings(book.work_id)
+      if (cached) {
+        byIsbn = cached.listings
+        fetchedAt = cached.fetchedAt
+      } else {
+        setStatsLoading(true)
+        try {
+          const res = await fetch('/api/prices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isbns: allIsbns }) })
+          const data: { listings: Record<string, Listing[]> } = await res.json()
+          byIsbn = data.listings ?? {}
+          fetchedAt = Date.now()
+          setCachedListings(book.work_id, byIsbn)
+        } catch { setStatsLoading(false); return }
+        setStatsLoading(false)
+      }
+    } else {
+      setStatsLoading(true)
+      try {
+        const res = await fetch('/api/prices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isbns: allIsbns }) })
+        const data: { listings: Record<string, Listing[]> } = await res.json()
+        byIsbn = data.listings ?? {}
+        fetchedAt = Date.now()
+        setCachedListings(book.work_id, byIsbn)
+      } catch { setStatsLoading(false); return }
+      setStatsLoading(false)
+    }
+
+    setLastFetchedAt(fetchedAt)
+    const stats: Record<string, Exclude<EditionStats, undefined>> = {}
+    for (const group of groups) {
+      const groupListings = group.editions.flatMap((e) => byIsbn[e.isbn] ?? [])
+      const qualifying = groupListings.filter((l) => activeConditions.includes(l.condition_normalized))
+      if (qualifying.length === 0) { stats[group.key] = null; continue }
+      const isbnCounts = new Map<string, number>()
+      for (const l of qualifying) isbnCounts.set(l.isbn, (isbnCounts.get(l.isbn) ?? 0) + 1)
+      const primaryIsbn = [...isbnCounts.entries()].reduce((a, b) => b[1] > a[1] ? b : a)[0]
+      const byCondition: ConditionStat[] = activeConditions.flatMap((cond) => {
+        const condListings = qualifying.filter((l) => l.condition_normalized === cond)
+        if (condListings.length === 0) return []
+        const cheapest = condListings.reduce((a, b) => a.price <= b.price ? a : b)
+        return [{ condition: cond, count: condListings.length, cheapest: cheapest.price, url: cheapest.url }]
       })
-      .catch(() => {})
+      stats[group.key] = { count: qualifying.length, primaryIsbn, byCondition }
+    }
+    setListingStats(stats)
+  }
+
+  useEffect(() => {
+    loadStats(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editions])
 
@@ -886,6 +949,16 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
 
         {/* Filters: single row */}
         <div className="flex items-center gap-2 shrink-0 overflow-x-auto pb-0.5">
+          <button
+            onClick={() => loadStats(true)}
+            disabled={statsLoading}
+            className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-input hover:bg-muted text-sm text-muted-foreground transition-colors shrink-0 disabled:opacity-50"
+            title="Refresh listings from AbeBooks"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${statsLoading ? 'animate-spin' : ''}`} />
+            {lastFetchedAt ? relativeTime(lastFetchedAt) : statsLoading ? 'Fetching…' : 'Fetch listings'}
+          </button>
+          <div className="w-px h-4 bg-border shrink-0" />
           <MultiSelectDropdown
             label="Format"
             options={(['hardcover', 'paperback'] as Format[])}
