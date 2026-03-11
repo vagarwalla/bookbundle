@@ -50,6 +50,7 @@ export interface Edition {
   cover_id: number | null
   edition_name: string | null  // e.g. "Penguin Classics", "Revised Edition"
   pages: number | null
+  popularity_score: number  // 0–80 heuristic from Open Library metadata
 }
 
 export interface Listing {

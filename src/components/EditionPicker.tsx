@@ -331,15 +331,23 @@ function MultiSelectDropdown<T extends string | number>({
 }
 
 function EditionCard({
-  group, formatFilter, selectedKeys, firstEditionKey, onToggle,
+  group, formatFilter, selectedKeys, firstEditionKey, onToggle, popularityMap, popularityLoading,
 }: {
-  group: CoverGroup; formatFilter: Format; selectedKeys: string[]; firstEditionKey: string | null; onToggle: (key: string) => void
+  group: CoverGroup
+  formatFilter: Format
+  selectedKeys: string[]
+  firstEditionKey: string | null
+  onToggle: (key: string) => void
+  popularityMap: Record<string, number>
+  popularityLoading: boolean
 }) {
   const rep = bestEdition(group, formatFilter)
   const selIdx = selectedKeys.indexOf(group.key)
   const isSelected = selIdx !== -1
   const isPrimary = selIdx === 0
   const isFirstEdition = group.key === firstEditionKey
+  const popScore = groupCombinedScore(group, popularityMap)
+  const popIsLoading = popularityLoading && Object.keys(popularityMap).length === 0
   return (
     <button
       onClick={() => onToggle(group.key)}
@@ -375,12 +383,15 @@ function EditionCard({
           <span className="text-xs text-muted-foreground/60 shrink-0">{rep.isbn}</span>
         </div>
         {rep.pages && <div className="text-muted-foreground text-sm">{rep.pages} pp</div>}
-        <div className="flex flex-wrap gap-1 pt-0.5">
-          {group.formats.filter((f) => f !== 'any').map((f) => (
-            <span key={f} className="text-sm px-2 py-0.5 rounded bg-muted text-muted-foreground capitalize">
-              {f === 'hardcover' ? 'HC' : 'PB'}
-            </span>
-          ))}
+        <div className="flex items-center justify-between gap-1 pt-0.5">
+          <div className="flex flex-wrap gap-1">
+            {group.formats.filter((f) => f !== 'any').map((f) => (
+              <span key={f} className="text-sm px-2 py-0.5 rounded bg-muted text-muted-foreground capitalize">
+                {f === 'hardcover' ? 'HC' : 'PB'}
+              </span>
+            ))}
+          </div>
+          <PopularityDots score={popScore} loading={popIsLoading} />
         </div>
       </div>
     </button>
@@ -429,6 +440,8 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
   const [groupBy, setGroupBy] = useState<'publisher' | 'visual'>('publisher')
   const [clusterMap, setClusterMap] = useState<Record<string, string>>({})
   const [hashesLoading, setHashesLoading] = useState(false)
+  const [popularityMap, setPopularityMap] = useState<Record<string, number>>({})
+  const [popularityLoading, setPopularityLoading] = useState(false)
 
   useEffect(() => {
     if (!book || !open) return
@@ -441,6 +454,8 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
     setTitleFilter(new Set())
     setClusterMap({})
     setHashesLoading(false)
+    setPopularityMap({})
+    setPopularityLoading(false)
     fetch(`/api/editions?workId=${encodeURIComponent(book.work_id)}&language=${language}`)
       .then((r) => r.json())
       .then((data) => {
@@ -448,6 +463,24 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
         setLoading(false)
       })
   }, [book, open, language])
+
+  // Lazily fetch OCLC library-holdings for all edition ISBNs (Tier-2 popularity)
+  useEffect(() => {
+    if (editions.length === 0) return
+    const isbns = [...new Set(editions.map((e) => e.isbn))].slice(0, 150)
+    setPopularityLoading(true)
+    fetch('/api/popularity', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isbns }),
+    })
+      .then((r) => r.json())
+      .then((data: Record<string, number>) => {
+        setPopularityMap(data)
+        setPopularityLoading(false)
+      })
+      .catch(() => setPopularityLoading(false))
+  }, [editions])
 
   const coverGroups = useMemo(() => groupEditionsBycover(editions), [editions])
 
@@ -530,8 +563,19 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
       if (!map.has(key)) map.set(key, { label: rep.publisher || 'Unknown publisher', groups: [] })
       map.get(key)!.groups.push(group)
     }
-    return Array.from(map.values())
-  }, [sorted, formatFilter])
+    const sections = Array.from(map.values())
+    // Sort editions within each section by popularity (desc)
+    for (const section of sections) {
+      section.groups.sort((a, b) => groupCombinedScore(b, popularityMap) - groupCombinedScore(a, popularityMap))
+    }
+    // Sort sections by the best score in each section (desc)
+    sections.sort((a, b) => {
+      const sA = Math.max(...a.groups.map((g) => groupCombinedScore(g, popularityMap)))
+      const sB = Math.max(...b.groups.map((g) => groupCombinedScore(g, popularityMap)))
+      return sB - sA
+    })
+    return sections
+  }, [sorted, formatFilter, popularityMap])
 
   function fetchClusters(force = false) {
     const coverUrls = [...new Set(
@@ -569,25 +613,26 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
       return { group, clusterRep: rep }
     })
 
-    // Order clusters by the lowest cover_id in each cluster
-    const clusterOrder = new Map<string | null, number>()
+    // Best popularity score per cluster (used to rank clusters against each other)
+    const clusterBestScore = new Map<string | null, number>()
     for (const { group, clusterRep } of withCluster) {
-      if (clusterOrder.has(clusterRep)) continue
-      const coverId = group.key.startsWith('id:') ? parseInt(group.key.slice(3), 10) : Infinity
-      clusterOrder.set(clusterRep, coverId)
+      const s = groupCombinedScore(group, popularityMap)
+      if (!clusterBestScore.has(clusterRep) || s > clusterBestScore.get(clusterRep)!) {
+        clusterBestScore.set(clusterRep, s)
+      }
     }
 
     return [...withCluster]
       .sort((a, b) => {
-        const oa = clusterOrder.get(a.clusterRep) ?? Infinity
-        const ob = clusterOrder.get(b.clusterRep) ?? Infinity
-        if (oa !== ob) return oa - ob
-        const ia = a.group.key.startsWith('id:') ? parseInt(a.group.key.slice(3), 10) : Infinity
-        const ib = b.group.key.startsWith('id:') ? parseInt(b.group.key.slice(3), 10) : Infinity
-        return ia - ib
+        // Primary: sort clusters by their best popularity score (desc)
+        const ca = clusterBestScore.get(a.clusterRep) ?? 0
+        const cb = clusterBestScore.get(b.clusterRep) ?? 0
+        if (ca !== cb) return cb - ca
+        // Secondary: within a cluster, sort by individual score (desc)
+        return groupCombinedScore(b.group, popularityMap) - groupCombinedScore(a.group, popularityMap)
       })
       .map(({ group }) => group)
-  }, [clusterMap, filtered])
+  }, [clusterMap, filtered, popularityMap])
 
   // Build visual sections from visualSorted for rendering
   const visualSections = useMemo((): { clusterRep: string | null; groups: CoverGroup[] }[] => {
@@ -761,7 +806,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
                   <SectionHeader label={label} groups={groups} selectedKeys={selectedKeys} onToggleGroup={toggleGroup} />
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-3">
                     {groups.map((group) => (
-                      <EditionCard key={group.key} group={group} formatFilter={effectiveFormat} selectedKeys={selectedKeys} firstEditionKey={firstEditionKey} onToggle={toggleCard} />
+                      <EditionCard key={group.key} group={group} formatFilter={effectiveFormat} selectedKeys={selectedKeys} firstEditionKey={firstEditionKey} onToggle={toggleCard} popularityMap={popularityMap} popularityLoading={popularityLoading} />
                     ))}
                   </div>
                 </div>
@@ -796,7 +841,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm }: Props) {
                     <SectionHeader label={sectionLabel} groups={section.groups} selectedKeys={selectedKeys} onToggleGroup={toggleGroup} />
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-3">
                       {section.groups.map((group) => (
-                        <EditionCard key={group.key} group={group} formatFilter={effectiveFormat} selectedKeys={selectedKeys} firstEditionKey={firstEditionKey} onToggle={toggleCard} />
+                        <EditionCard key={group.key} group={group} formatFilter={effectiveFormat} selectedKeys={selectedKeys} firstEditionKey={firstEditionKey} onToggle={toggleCard} popularityMap={popularityMap} popularityLoading={popularityLoading} />
                       ))}
                     </div>
                   </div>

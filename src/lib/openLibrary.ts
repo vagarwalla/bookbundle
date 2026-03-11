@@ -303,6 +303,25 @@ function deriveEditionName(title: string): string | null {
   return match ? match[1] : null
 }
 
+function computePopularityScore(params: {
+  ocaid: string | null
+  coverId: number | null
+  publisher: string | null
+  publishYear: number | null
+  pages: number | null
+  editionName: string | null
+}): number {
+  let score = 0
+  if (params.ocaid) score += 30         // digitized by Internet Archive → widely read
+  if (params.coverId) score += 20       // cover scanned and catalogued
+  if (params.publisher) score += 10     // has publisher metadata
+  if (params.publishYear) score += 5    // has year metadata
+  if (params.pages && params.pages > 0) score += 5  // has page count
+  if (params.editionName) score += 5    // has named edition (e.g. "Penguin Classics")
+  if (params.publishYear && params.publishYear > 1980) score += 5  // modern printing = more likely in circulation
+  return Math.min(80, score)
+}
+
 function buildEdition(
   isbn: string,
   entry: Record<string, unknown>,
@@ -313,16 +332,21 @@ function buildEdition(
   const publishYear = yearMatch ? parseInt(yearMatch[1]) : null
   const physDesc = (entry.physical_format as string | null) ?? null
   const format = detectFormat((entry.title as string) || '', physDesc)
+  const publisher = (entry.publishers as string[] | undefined)?.[0] ?? null
+  const editionName = (entry.edition_name as string) || deriveEditionName((entry.title as string) || '') || null
+  const pages = (entry.number_of_pages as number) || null
+  const ocaid = (entry.ocaid as string | undefined) ?? null
   return {
     isbn,
     title: (entry.title as string) || '',
-    publisher: (entry.publishers as string[] | undefined)?.[0] ?? null,
+    publisher,
     publish_year: publishYear,
     format,
     cover_url: coverUrl,
     cover_id: coverId,
-    edition_name: (entry.edition_name as string) || deriveEditionName((entry.title as string) || '') || null,
-    pages: (entry.number_of_pages as number) || null,
+    edition_name: editionName,
+    pages,
+    popularity_score: computePopularityScore({ ocaid, coverId, publisher, publishYear, pages, editionName }),
   }
 }
 
