@@ -316,10 +316,9 @@ function EditionCard({
   firstEditionKey: string | null
   onToggle: (key: string) => void
   popularityMap: Record<string, number>
-  onHover: (group: CoverGroup, rect: DOMRect) => void
+  onHover: (group: CoverGroup) => void
   onUnhover: () => void
 }) {
-  const ref = useRef<HTMLButtonElement>(null)
   const rep = bestEdition(group, formatFilter)
   const selIdx = selectedKeys.indexOf(group.key)
   const isSelected = selIdx !== -1
@@ -328,9 +327,8 @@ function EditionCard({
   const isDigitized = groupIsDigitized(group)
   return (
     <button
-      ref={ref}
       onClick={() => onToggle(group.key)}
-      onMouseEnter={() => ref.current && onHover(group, ref.current.getBoundingClientRect())}
+      onMouseEnter={() => onHover(group)}
       onMouseLeave={onUnhover}
       className={`relative rounded-lg p-2 text-left transition-all border-2 ${isPrimary ? 'border-amber-500 bg-amber-50' : isSelected ? 'border-primary bg-primary/5' : 'border-transparent hover:border-border'}`}
     >
@@ -381,18 +379,14 @@ function EditionCard({
   )
 }
 
-function EditionPreview({ group, rect }: { group: CoverGroup; rect: DOMRect }) {
-  const PANEL_W = 220
-  const PANEL_H = 320
-  const GAP = 8
-
-  // Position to the right of the card; flip left if it would overflow viewport
-  const vpW = typeof window !== 'undefined' ? window.innerWidth : 1200
-  const vpH = typeof window !== 'undefined' ? window.innerHeight : 800
-  let left = rect.right + GAP
-  if (left + PANEL_W > vpW - 8) left = rect.left - PANEL_W - GAP
-  let top = rect.top
-  if (top + PANEL_H > vpH - 8) top = vpH - PANEL_H - 8
+function EditionDetailPanel({ group }: { group: CoverGroup | null }) {
+  if (!group) {
+    return (
+      <div className="flex items-center justify-center h-full text-sm text-muted-foreground text-center px-4">
+        Hover an edition to preview details
+      </div>
+    )
+  }
 
   const editions = group.editions.slice().sort((a, b) => {
     const score = (e: typeof a) => (e.publish_year ? 1 : 0) + (e.publisher ? 1 : 0) + (e.pages ? 1 : 0)
@@ -400,29 +394,29 @@ function EditionPreview({ group, rect }: { group: CoverGroup; rect: DOMRect }) {
   })
 
   return (
-    <div
-      className="fixed z-[200] bg-popover text-popover-foreground shadow-xl rounded-xl ring-1 ring-foreground/10 p-3 flex flex-col gap-2 pointer-events-none"
-      style={{ left, top, width: PANEL_W }}
-    >
+    <div className="flex flex-col gap-3 p-3 overflow-y-auto h-full">
       {group.cover_url && (
         <img
           src={group.cover_url}
           alt=""
-          className="w-full rounded-md object-cover"
-          style={{ maxHeight: 140, objectPosition: 'top' }}
+          className="w-full rounded-lg object-cover object-top shadow-sm"
+          style={{ maxHeight: 200 }}
         />
       )}
-      <div className="space-y-2">
+      <div className="space-y-3">
         {editions.map((e) => (
-          <div key={e.isbn} className="text-xs space-y-0.5 border-b border-border last:border-0 pb-1.5 last:pb-0">
-            {e.edition_name && <div className="font-medium text-foreground">{e.edition_name}</div>}
+          <div key={e.isbn} className="text-xs space-y-1 border-b border-border last:border-0 pb-3 last:pb-0">
+            {e.edition_name && <div className="font-semibold text-sm text-foreground">{e.edition_name}</div>}
             {e.publisher && <div className="text-muted-foreground">{e.publisher}</div>}
-            <div className="flex gap-2 text-muted-foreground/80">
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-muted-foreground">
               {e.publish_year && <span>{e.publish_year}</span>}
               {e.pages && <span>{e.pages} pp</span>}
-              {e.format !== 'any' && <span className="capitalize">{e.format === 'hardcover' ? 'HC' : 'PB'}</span>}
+              {e.format !== 'any' && <span>{e.format === 'hardcover' ? 'Hardcover' : 'Paperback'}</span>}
             </div>
-            <div className="font-mono text-muted-foreground/60">{e.isbn}</div>
+            <div className="font-mono text-muted-foreground/60 text-[10px]">{e.isbn}</div>
+            {e.ocaid && (
+              <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 font-medium">Digitized</span>
+            )}
           </div>
         ))}
       </div>
@@ -476,7 +470,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
   const [popularityMap, setPopularityMap] = useState<Record<string, number>>({})
   const [popularityLoading, setPopularityLoading] = useState(false)
   const [olReads, setOlReads] = useState<number | null>(null)
-  const [preview, setPreview] = useState<{ group: CoverGroup; rect: DOMRect } | null>(null)
+  const [hoveredGroup, setHoveredGroup] = useState<CoverGroup | null>(null)
 
   useEffect(() => {
     if (!book || !open) return
@@ -783,7 +777,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5xl w-[90vw] max-h-[90vh] flex flex-col">
+      <DialogContent className="sm:max-w-6xl w-[95vw] max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Choose editions — {book?.title}</DialogTitle>
         </DialogHeader>
@@ -885,8 +879,11 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
           </div>
         </div>
 
+        {/* Split pane: grid left, detail panel right */}
+        <div className="flex-1 flex gap-0 min-h-0">
+
         {/* Grid */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto pr-3">
           {loading ? (
             <div className="flex items-center justify-center h-40">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -902,7 +899,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
                   <SectionHeader label={label} groups={groups} selectedKeys={selectedKeys} onToggleGroup={toggleGroup} />
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-3">
                     {groups.map((group) => (
-                      <EditionCard key={group.key} group={group} formatFilter={effectiveFormat} selectedKeys={selectedKeys} firstEditionKey={firstEditionKey} onToggle={toggleCard} popularityMap={popularityMap} onHover={(g, r) => setPreview({ group: g, rect: r })} onUnhover={() => setPreview(null)} />
+                      <EditionCard key={group.key} group={group} formatFilter={effectiveFormat} selectedKeys={selectedKeys} firstEditionKey={firstEditionKey} onToggle={toggleCard} popularityMap={popularityMap} onHover={(g) => setHoveredGroup(g)} onUnhover={() => setHoveredGroup(null)} />
                     ))}
                   </div>
                 </div>
@@ -937,7 +934,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
                     <SectionHeader label={sectionLabel} groups={section.groups} selectedKeys={selectedKeys} onToggleGroup={toggleGroup} />
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-3">
                       {section.groups.map((group) => (
-                        <EditionCard key={group.key} group={group} formatFilter={effectiveFormat} selectedKeys={selectedKeys} firstEditionKey={firstEditionKey} onToggle={toggleCard} popularityMap={popularityMap} onHover={(g, r) => setPreview({ group: g, rect: r })} onUnhover={() => setPreview(null)} />
+                        <EditionCard key={group.key} group={group} formatFilter={effectiveFormat} selectedKeys={selectedKeys} firstEditionKey={firstEditionKey} onToggle={toggleCard} popularityMap={popularityMap} onHover={(g) => setHoveredGroup(g)} onUnhover={() => setHoveredGroup(null)} />
                       ))}
                     </div>
                   </div>
@@ -947,6 +944,15 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
             </div>
           )}
         </div>
+
+        {/* Detail panel */}
+        <div className="w-52 shrink-0 border-l border-border ml-3">
+          <EditionDetailPanel
+            group={hoveredGroup ?? (primaryKey ? (coverGroups.find((g) => g.key === primaryKey) ?? null) : null)}
+          />
+        </div>
+
+        </div>{/* end split pane */}
 
         <div className="flex gap-2 shrink-0 pt-2 border-t items-center">
           {selectedCount > 0 && (
@@ -998,7 +1004,6 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
           </div>
         </div>
       </DialogContent>
-      {preview && <EditionPreview group={preview.group} rect={preview.rect} />}
     </Dialog>
   )
 }
