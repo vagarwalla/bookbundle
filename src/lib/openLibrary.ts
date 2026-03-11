@@ -323,6 +323,43 @@ function isAudioEdition(entry: Record<string, unknown>): boolean {
   return AUDIO_RE.test(title) || AUDIO_RE.test(publisher) || AUDIO_RE.test(physFormat) || AUDIO_RE.test(editionName)
 }
 
+/**
+ * Return true if the publisher name is clearly from a non-English-speaking country.
+ * Two signals:
+ *   1. Non-Latin script in the publisher name (Cyrillic, CJK, Arabic, etc.)
+ *   2. Structural words that are only used in non-English publisher names
+ *      (Verlag, Editorial, Edizioni, Uitgeverij, etc.)
+ */
+function isForeignPublisher(publisher: string): boolean {
+  if (!publisher) return false
+  if (hasNonLatinScript(publisher)) return true
+  // Language-specific structural words that appear in publisher names
+  const FOREIGN_PUB_RE = /\bverlag(s|sgesellschaft|sgruppe|shandelei)?\b|\bedit(?:ore|ori|iones|ioni|orial|oriale|oriales|oras?|eurs?|ions?|rice)\b|\buitgeverij\b|\buitgevers\b|\bwydawnictwo\b|\bforlaget?\b|\bkustannus\b|\bförlag\b/i
+  return FOREIGN_PUB_RE.test(publisher)
+}
+
+/**
+ * ISBN-13 registration group → language/country of publication.
+ * Groups 0 and 1 are English; the prefixes listed here are definitively non-English.
+ * Source: https://www.isbn-international.org/range_file_generation
+ */
+const NON_ENGLISH_ISBN13_PREFIXES = [
+  // Single-digit non-English groups
+  '9782', '9783', '9784', '9785', '9787',
+  // Two-digit non-English groups (80–91)
+  '97880', '97882', '97883', '97884', '97885', '97886', '97887', '97888', '97889', '97890', '97891',
+  // Three-digit non-English groups (selected)
+  '978950', '978951', '978952', '978953', '978954', '978955', '978956', '978957', '978958', '978959',
+  '978960', '978961', '978963', '978964', '978966', '978968', '978970', '978972', '978973', '978974',
+  '978975', '978980', '978985', '978986', '978987', '978989',
+]
+
+function isNonEnglishIsbn(isbn: string): boolean {
+  const digits = isbn.replace(/\D/g, '')
+  if (digits.length !== 13) return false
+  return NON_ENGLISH_ISBN13_PREFIXES.some((p) => digits.startsWith(p))
+}
+
 function computePopularityScore(params: {
   ocaid: string | null
   coverId: number | null
@@ -414,6 +451,12 @@ export async function getEditions(workId: string, language = 'eng'): Promise<Edi
     // Skip audio editions regardless of language
     if (isAudioEdition(entry)) continue
 
+    // Publisher name check applies to all editions — if the publisher is clearly
+    // a non-English-speaking-country publisher, exclude it even if the language
+    // tag is missing or ambiguous
+    const publisher = (entry.publishers as string[] | undefined)?.[0] ?? ''
+    if (language && isForeignPublisher(publisher)) continue
+
     if (language) {
       const langs = (entry.languages as { key: string }[]) || []
       if (langs.length > 0) {
@@ -427,6 +470,9 @@ export async function getEditions(workId: string, language = 'eng'): Promise<Edi
         // Non-Latin scripts (Cyrillic, CJK, Arabic, Hebrew, Greek, Hindi, etc.) are
         // a reliable signal this is not an English edition
         if (hasNonLatinScript(title)) continue
+        // ISBN registration group is assigned by each country's national ISBN agency —
+        // a reliable indicator of language/country of publication
+        if (isNonEnglishIsbn(isbn)) continue
         confirmed.push(buildEdition(isbn, entry, coverId, coverUrl))
         langUnknownIsbns.add(isbn)
       }
