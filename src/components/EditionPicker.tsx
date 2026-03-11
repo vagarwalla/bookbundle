@@ -28,45 +28,9 @@ function groupCombinedScore(group: CoverGroup, popularityMap: Record<string, num
   return Math.max(...group.editions.map((e) => combinedScore(e, popularityMap)))
 }
 
-/** Best (max) OCLC holdings across all editions in a group */
-function groupHoldings(group: CoverGroup, popularityMap: Record<string, number>): number | null {
-  let best: number | null = null
-  for (const e of group.editions) {
-    const h = popularityMap[e.isbn]
-    if (h !== undefined && (best === null || h > best)) best = h
-  }
-  return best
-}
-
-function formatCount(n: number): string {
-  if (n >= 10000) return `${Math.round(n / 1000)}k`
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`
-  return String(n)
-}
-
-function LibraryCount({
-  holdings, loading,
-}: {
-  holdings: number | null
-  loading: boolean
-}) {
-  if (loading) {
-    return (
-      <div className="flex items-center gap-1 pt-1">
-        <div className="h-3 w-20 rounded bg-muted animate-pulse" />
-      </div>
-    )
-  }
-  // Prefer OCLC per-edition library count; fall back to OL work-level reads
-  if (holdings && holdings > 0) {
-    return (
-      <div className="flex items-center gap-1 pt-1" title={`${holdings.toLocaleString()} libraries hold this edition (OCLC)`}>
-        <span className="text-xs text-muted-foreground">📚</span>
-        <span className="text-xs text-muted-foreground font-medium">{formatCount(holdings)} libraries</span>
-      </div>
-    )
-  }
-  return null
+/** True if any edition in the group was digitized by Internet Archive */
+function groupIsDigitized(group: CoverGroup): boolean {
+  return group.editions.some((e) => e.ocaid != null)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -344,7 +308,7 @@ function MultiSelectDropdown<T extends string | number>({
 }
 
 function EditionCard({
-  group, formatFilter, selectedKeys, firstEditionKey, onToggle, popularityMap, popularityLoading,
+  group, formatFilter, selectedKeys, firstEditionKey, onToggle, popularityMap,
 }: {
   group: CoverGroup
   formatFilter: Format
@@ -352,15 +316,13 @@ function EditionCard({
   firstEditionKey: string | null
   onToggle: (key: string) => void
   popularityMap: Record<string, number>
-  popularityLoading: boolean
 }) {
   const rep = bestEdition(group, formatFilter)
   const selIdx = selectedKeys.indexOf(group.key)
   const isSelected = selIdx !== -1
   const isPrimary = selIdx === 0
   const isFirstEdition = group.key === firstEditionKey
-  const holdings = groupHoldings(group, popularityMap)
-  const popIsLoading = popularityLoading && Object.keys(popularityMap).length === 0
+  const isDigitized = groupIsDigitized(group)
   return (
     <button
       onClick={() => onToggle(group.key)}
@@ -396,14 +358,18 @@ function EditionCard({
           <span className="text-xs text-muted-foreground/60 shrink-0">{rep.isbn}</span>
         </div>
         {rep.pages && <div className="text-muted-foreground text-sm">{rep.pages} pp</div>}
-        <div className="flex flex-wrap gap-1 pt-0.5">
+        <div className="flex flex-wrap items-center gap-1 pt-0.5">
           {group.formats.filter((f) => f !== 'any').map((f) => (
             <span key={f} className="text-sm px-2 py-0.5 rounded bg-muted text-muted-foreground capitalize">
               {f === 'hardcover' ? 'HC' : 'PB'}
             </span>
           ))}
+          {isDigitized && (
+            <span className="text-xs px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 font-medium" title="A copy of this edition is preserved in the Internet Archive">
+              Digitized
+            </span>
+          )}
         </div>
-        <LibraryCount holdings={holdings} loading={popIsLoading} />
       </div>
     </button>
   )
@@ -768,7 +734,6 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
 
         <p className="text-sm text-muted-foreground shrink-0 -mt-1">
           Pick one or more editions you&apos;d accept. First picked = top preference. All are searched for the best price.
-          {olReads && olReads > 0 ? ` · ${formatCount(olReads)} readers on Open Library` : ''}
         </p>
 
         {/* Filters: single row */}
@@ -881,7 +846,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
                   <SectionHeader label={label} groups={groups} selectedKeys={selectedKeys} onToggleGroup={toggleGroup} />
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-3">
                     {groups.map((group) => (
-                      <EditionCard key={group.key} group={group} formatFilter={effectiveFormat} selectedKeys={selectedKeys} firstEditionKey={firstEditionKey} onToggle={toggleCard} popularityMap={popularityMap} popularityLoading={popularityLoading} />
+                      <EditionCard key={group.key} group={group} formatFilter={effectiveFormat} selectedKeys={selectedKeys} firstEditionKey={firstEditionKey} onToggle={toggleCard} popularityMap={popularityMap} />
                     ))}
                   </div>
                 </div>
@@ -916,7 +881,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
                     <SectionHeader label={sectionLabel} groups={section.groups} selectedKeys={selectedKeys} onToggleGroup={toggleGroup} />
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-3">
                       {section.groups.map((group) => (
-                        <EditionCard key={group.key} group={group} formatFilter={effectiveFormat} selectedKeys={selectedKeys} firstEditionKey={firstEditionKey} onToggle={toggleCard} popularityMap={popularityMap} popularityLoading={popularityLoading} />
+                        <EditionCard key={group.key} group={group} formatFilter={effectiveFormat} selectedKeys={selectedKeys} firstEditionKey={firstEditionKey} onToggle={toggleCard} popularityMap={popularityMap} />
                       ))}
                     </div>
                   </div>

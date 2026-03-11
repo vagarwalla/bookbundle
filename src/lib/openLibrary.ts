@@ -346,6 +346,7 @@ function buildEdition(
     edition_name: editionName,
     pages,
     popularity_score: computePopularityScore({ ocaid, coverId, publisher, publishYear, pages, editionName }),
+    ocaid,
   }
 }
 

@@ -50,7 +50,8 @@ export interface Edition {
   cover_id: number | null
   edition_name: string | null  // e.g. "Penguin Classics", "Revised Edition"
   pages: number | null
-  popularity_score: number  // 0–80 heuristic from Open Library metadata
+  popularity_score: number  // 0–60 heuristic from Open Library metadata
+  ocaid: string | null      // Internet Archive identifier — non-null means this edition was digitized
 }
 
 export interface Listing {
