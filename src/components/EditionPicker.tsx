@@ -488,6 +488,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
   const [olReads, setOlReads] = useState<number | null>(null)
   const [hoveredGroup, setHoveredGroup] = useState<CoverGroup | null>(null)
   const [listingStats, setListingStats] = useState<Record<string, { count: number; cheapest: number; condition: string } | null>>({})
+  const [hideNoListings, setHideNoListings] = useState(true)
 
   useEffect(() => {
     if (!book || !open) return
@@ -504,6 +505,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
     setPopularityLoading(false)
     setOlReads(null)
     setListingStats({})
+    setHideNoListings(true)
     fetch(`/api/editions?workId=${encodeURIComponent(book.work_id)}&language=${language}`)
       .then((r) => r.json())
       .then((data: Edition[]) => {
@@ -621,6 +623,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
 
   const filtered = useMemo(() => {
     return coverGroups.filter((group) => {
+      if (hideNoListings && listingStats[group.key] === null) return false
       if (formatFilter.size > 0 && !group.editions.some((e) => formatFilter.has(e.format))) return false
       if (publisherFilter.size > 0 && !group.editions.some((e) => e.publisher && publisherFilter.has(e.publisher))) return false
       if (yearRange.min !== null || yearRange.max !== null) {
@@ -635,7 +638,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
       if (titleFilter.size > 0 && !group.editions.some((e) => e.title && titleFilter.has(e.title))) return false
       return true
     })
-  }, [coverGroups, formatFilter, publisherFilter, yearRange, titleFilter])
+  }, [coverGroups, formatFilter, publisherFilter, yearRange, titleFilter, hideNoListings, listingStats])
 
   const sorted = useMemo(() => {
     if (sortBy === 'popularity') {
@@ -783,6 +786,8 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
     setTitleFilter(new Set())
   }
 
+  const statsLoaded = Object.keys(listingStats).length > 0
+
 
   function toggleCard(key: string) {
     setSelectedKeys((prev) => {
@@ -874,6 +879,18 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
               All languages
             </button>
           </div>
+          <button
+            onClick={() => setHideNoListings((v) => !v)}
+            className={`flex items-center gap-1.5 h-8 px-2.5 rounded-lg border text-sm transition-colors whitespace-nowrap shrink-0 ${
+              hideNoListings
+                ? 'border-primary bg-primary/5 text-primary'
+                : 'border-input hover:bg-muted text-muted-foreground'
+            }`}
+            title={hideNoListings ? 'Showing only editions with listings — click to show all' : 'Click to hide editions with no listings'}
+          >
+            {hideNoListings ? 'Has listings' : 'All editions'}
+            {!statsLoaded && hideNoListings && <Loader2 className="h-3 w-3 animate-spin opacity-50" />}
+          </button>
           {hasActiveFilters && (
             <button
               onClick={clearAllFilters}
