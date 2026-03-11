@@ -262,6 +262,7 @@ export default function CartPage({ params }: { params: Promise<{ slug: string }>
           ...(editingItem.isbn_preferred ? [editingItem.isbn_preferred] : []),
           ...(editingItem.isbns_candidates ?? []).filter((i) => i !== editingItem.isbn_preferred),
         ] : undefined}
+        itemConditions={editingItem?.conditions ?? cart?.default_conditions}
       />
 
       <CoverPicker

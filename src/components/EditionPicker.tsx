@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { Loader2, Star, ChevronDown, X, Check, RefreshCw, Sparkles } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import type { BookSearchResult, Edition, Format, Listing } from '@/lib/types'
+import type { BookSearchResult, Condition, Edition, Format, Listing } from '@/lib/types'
+import { CONDITION_ORDER, CONDITION_LABELS } from '@/lib/relaxation'
 
 // ─── Popularity helpers ───────────────────────────────────────────────────────
 
@@ -41,6 +42,7 @@ interface Props {
   onOpenChange: (v: boolean) => void
   onConfirm: (editions: Edition[]) => void
   initialIsbns?: string[]
+  itemConditions?: Condition[]
 }
 
 const FORMAT_LABELS: Record<Format, string> = {
@@ -307,7 +309,8 @@ function MultiSelectDropdown<T extends string | number>({
   )
 }
 
-type EditionStats = { count: number; cheapest: number; condition: string } | null | undefined
+type ConditionStat = { condition: Condition; count: number; cheapest: number; url: string }
+type EditionStats = { count: number; primaryIsbn: string; byCondition: ConditionStat[] } | null | undefined
 
 function EditionCard({
   group, formatFilter, selectedKeys, firstEditionKey, onToggle, popularityMap, onHover, onUnhover, stats,
@@ -329,11 +332,14 @@ function EditionCard({
   const isFirstEdition = group.key === firstEditionKey
   const isDigitized = groupIsDigitized(group)
   return (
-    <button
+    <div
       onClick={() => onToggle(group.key)}
       onMouseEnter={() => onHover(group)}
       onMouseLeave={onUnhover}
-      className={`relative rounded-lg p-2 text-left transition-all border-2 ${isPrimary ? 'border-amber-500 bg-amber-50' : isSelected ? 'border-primary bg-primary/5' : 'border-transparent hover:border-border'}`}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(group.key) } }}
+      role="button"
+      tabIndex={0}
+      className={`relative rounded-lg p-2 text-left transition-all border-2 cursor-pointer ${isPrimary ? 'border-amber-500 bg-amber-50' : isSelected ? 'border-primary bg-primary/5' : 'border-transparent hover:border-border'}`}
     >
       {isSelected && (
         <div className={`absolute top-2 right-2 rounded-full px-1.5 py-0.5 z-10 flex items-center gap-0.5 text-xs font-semibold leading-none ${isPrimary ? 'bg-amber-500 text-white' : 'bg-primary text-primary-foreground'}`}>
@@ -377,21 +383,49 @@ function EditionCard({
             </span>
           )}
         </div>
-        <div className="pt-1">
+        <div className="pt-1 text-[11px] leading-snug">
           {stats === undefined && (
-            <span className="text-xs text-muted-foreground">Checking…</span>
+            <span className="text-muted-foreground">Checking…</span>
           )}
           {stats === null && (
-            <span className="text-xs text-muted-foreground italic">No listings</span>
+            <span className="text-muted-foreground italic">No listings</span>
           )}
           {stats && (
-            <span className="text-xs text-green-700 font-medium">
-              {stats.count} listing{stats.count !== 1 ? 's' : ''} · from ${stats.cheapest.toFixed(2)} ({stats.condition})
-            </span>
+            <>
+              <a
+                href={`https://www.abebooks.com/servlet/SearchResults?isbn=${stats.primaryIsbn}&sortby=17`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-green-700 font-medium hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {stats.count} listing{stats.count !== 1 ? 's' : ''} total
+              </a>
+              {stats.byCondition.length > 0 && (
+                <span className="text-muted-foreground">
+                  {' ('}
+                  {stats.byCondition.map((c, i) => (
+                    <span key={c.condition}>
+                      {i > 0 && ', '}
+                      <a
+                        href={c.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-green-700 hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {CONDITION_LABELS[c.condition]} from ${c.cheapest.toFixed(2)}
+                      </a>
+                    </span>
+                  ))}
+                  {')'}
+                </span>
+              )}
+            </>
           )}
         </div>
       </div>
-    </button>
+    </div>
   )
 }
 
@@ -469,7 +503,7 @@ function SectionHeader({
 }
 
 
-export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbns }: Props) {
+export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbns, itemConditions }: Props) {
   const [editions, setEditions] = useState<Edition[]>([])
   const [loading, setLoading] = useState(false)
   const [formatFilter, setFormatFilter] = useState<Set<Format>>(new Set())
@@ -487,7 +521,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
   const [popularityLoading, setPopularityLoading] = useState(false)
   const [olReads, setOlReads] = useState<number | null>(null)
   const [hoveredGroup, setHoveredGroup] = useState<CoverGroup | null>(null)
-  const [listingStats, setListingStats] = useState<Record<string, { count: number; cheapest: number; condition: string } | null>>({})
+  const [listingStats, setListingStats] = useState<Record<string, Exclude<EditionStats, undefined>>>({})
   const [hideNoListings, setHideNoListings] = useState(true)
 
   useEffect(() => {
@@ -546,11 +580,12 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
       .catch(() => setPopularityLoading(false))
   }, [editions])
 
-  // Fetch AbeBooks listing counts + cheapest price per cover group
+  // Fetch AbeBooks listing counts + per-condition breakdown per cover group
   useEffect(() => {
     if (editions.length === 0) return
     const groups = groupEditionsBycover(editions)
     const allIsbns = [...new Set(editions.map((e) => e.isbn))]
+    const activeConditions = itemConditions ?? CONDITION_ORDER
     fetch('/api/prices', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -559,19 +594,31 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
       .then((r) => r.json())
       .then((data: { listings: Record<string, Listing[]> }) => {
         const byIsbn = data.listings ?? {}
-        const stats: Record<string, { count: number; cheapest: number; condition: string } | null> = {}
+        const stats: Record<string, Exclude<EditionStats, undefined>> = {}
         for (const group of groups) {
-          const allListings = group.editions.flatMap((e) => byIsbn[e.isbn] ?? [])
-          if (allListings.length > 0) {
-            const cheapest = allListings.reduce((a, b) => a.price <= b.price ? a : b)
-            stats[group.key] = { count: allListings.length, cheapest: cheapest.price, condition: cheapest.condition.replace('Used - ', '') }
-          } else {
+          const groupListings = group.editions.flatMap((e) => byIsbn[e.isbn] ?? [])
+          const qualifying = groupListings.filter((l) => activeConditions.includes(l.condition_normalized))
+          if (qualifying.length === 0) {
             stats[group.key] = null
+            continue
           }
+          // Primary ISBN = one with most qualifying listings (for total link)
+          const isbnCounts = new Map<string, number>()
+          for (const l of qualifying) isbnCounts.set(l.isbn, (isbnCounts.get(l.isbn) ?? 0) + 1)
+          const primaryIsbn = [...isbnCounts.entries()].reduce((a, b) => b[1] > a[1] ? b : a)[0]
+          // Per-condition breakdown in condition-order
+          const byCondition: ConditionStat[] = activeConditions.flatMap((cond) => {
+            const condListings = qualifying.filter((l) => l.condition_normalized === cond)
+            if (condListings.length === 0) return []
+            const cheapest = condListings.reduce((a, b) => a.price <= b.price ? a : b)
+            return [{ condition: cond, count: condListings.length, cheapest: cheapest.price, url: cheapest.url }]
+          })
+          stats[group.key] = { count: qualifying.length, primaryIsbn, byCondition }
         }
         setListingStats(stats)
       })
       .catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editions])
 
   // Fallback: fetch work-level "already read" count from Open Library
@@ -873,10 +920,10 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
               English
             </button>
             <button
-              className={`px-2.5 py-1.5 transition-colors whitespace-nowrap ${language === '' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'}`}
-              onClick={() => setLanguage('')}
+              className={`px-2.5 py-1.5 transition-colors whitespace-nowrap ${language === 'other' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'}`}
+              onClick={() => setLanguage('other')}
             >
-              All languages
+              Other languages
             </button>
           </div>
           <button
