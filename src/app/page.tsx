@@ -60,27 +60,23 @@ export default function HomePage() {
       </header>
 
       {/* Hero */}
-      <section className="max-w-5xl mx-auto px-4 py-16">
-        <div className="flex flex-col lg:flex-row items-center gap-12">
-          <div className="flex-1 text-center lg:text-left">
-            <h1 className="text-5xl sm:text-6xl font-bold tracking-tight mb-5 leading-tight">
-              Stack more books.
-            </h1>
-            <p className="text-muted-foreground text-xl max-w-xl mb-10">
-              Add the books you&apos;re after, pick your preferred edition and cover, and it&apos;ll find second-hand copies across booksellers — grouped so you&apos;re not doing a dozen separate checkouts.
-            </p>
-            <Button size="lg" className="text-base px-8 h-12" onClick={() => setOpen(true)}>
-              <ShoppingCart className="h-5 w-5 mr-2" />
-              Start a Stack
-            </Button>
-          </div>
-          <div className="shrink-0">
-            <img
-              src="https://66.media.tumblr.com/tumblr_lnyexmyOR71qc3reoo1_500.gif"
-              alt="Harry Potter receiving a stack of books at Flourish and Blotts"
-              className="rounded-2xl shadow-xl w-80 sm:w-96 lg:w-[420px]"
-            />
-          </div>
+      <section className="max-w-5xl mx-auto px-4 pt-16 pb-10 text-center">
+        <h1 className="text-5xl sm:text-6xl font-bold tracking-tight mb-5 leading-tight">
+          Stack more books.
+        </h1>
+        <p className="text-muted-foreground text-xl max-w-xl mx-auto mb-10">
+          Add the books you&apos;re after, pick your preferred edition and cover, and it&apos;ll find second-hand copies across booksellers — grouped so you&apos;re not doing a dozen separate checkouts.
+        </p>
+        <Button size="lg" className="text-base px-8 h-12" onClick={() => setOpen(true)}>
+          <ShoppingCart className="h-5 w-5 mr-2" />
+          Start a Stack
+        </Button>
+        <div className="mt-12 flex justify-center">
+          <img
+            src="https://66.media.tumblr.com/tumblr_lnyexmyOR71qc3reoo1_500.gif"
+            alt="Harry Potter receiving a stack of books at Flourish and Blotts"
+            className="rounded-2xl shadow-xl w-full max-w-2xl"
+          />
         </div>
       </section>
 
