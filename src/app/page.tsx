@@ -78,7 +78,7 @@ export default function HomePage() {
             <img
               src="https://66.media.tumblr.com/tumblr_lnyexmyOR71qc3reoo1_500.gif"
               alt="Harry Potter receiving a stack of books at Flourish and Blotts"
-              className="rounded-2xl shadow-lg w-72 sm:w-80"
+              className="rounded-2xl shadow-xl w-80 sm:w-96 lg:w-[420px]"
             />
           </div>
         </div>
@@ -86,7 +86,7 @@ export default function HomePage() {
 
       {/* How it works */}
       <section className="max-w-5xl mx-auto px-4 pb-14">
-        <h2 className="text-2xl font-bold text-center mb-8">How the magic works</h2>
+        <h2 className="text-2xl font-bold text-center mb-8">How it works</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           <div className="text-center p-7 rounded-2xl bg-muted/50">
             <div className="text-4xl mb-4">🔍</div>
@@ -101,11 +101,11 @@ export default function HomePage() {
           <div className="text-center p-7 rounded-2xl bg-muted/50">
             <div className="text-4xl mb-4">📦</div>
             <h3 className="font-semibold text-lg mb-2">Order in one go</h3>
-            <p className="text-muted-foreground text-sm leading-relaxed">We group your books by seller so you place the fewest orders possible. No twelve separate checkouts.</p>
+            <p className="text-muted-foreground text-sm leading-relaxed">Books get grouped by seller so you place the fewest orders possible. No twelve separate checkouts.</p>
           </div>
         </div>
         <div className="mt-8 p-4 rounded-xl border bg-muted/30 text-sm text-center max-w-2xl mx-auto">
-          🌍 <strong>Note for international readers:</strong> Listings come from <strong>ThriftBooks</strong>, <strong>Better World Books</strong>, and <strong>AbeBooks</strong> — US-based marketplaces. They do ship internationally, but expect higher shipping costs outside the US.
+          🌍 Outside the US? Listings come from <strong>ThriftBooks</strong>, <strong>Better World Books</strong>, and <strong>AbeBooks</strong> — all US-based. They do ship internationally, though shipping will be a bit pricier.
         </div>
       </section>
 
