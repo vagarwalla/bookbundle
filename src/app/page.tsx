@@ -64,9 +64,6 @@ export default function HomePage() {
         <h1 className="text-5xl sm:text-6xl font-bold tracking-tight mb-5 leading-tight">
           Stack more books.
         </h1>
-        <p className="text-muted-foreground text-xl max-w-xl mx-auto mb-10">
-          Add the books you&apos;re after, pick your preferred edition and cover, and it&apos;ll find second-hand copies across booksellers — grouped so you&apos;re not doing a dozen separate checkouts.
-        </p>
         <Button size="lg" className="text-base px-8 h-12" onClick={() => setOpen(true)}>
           <ShoppingCart className="h-5 w-5 mr-2" />
           Start a Stack
