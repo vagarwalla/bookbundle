@@ -1,10 +1,11 @@
 import type { Metadata } from 'next'
-import { Geist } from 'next/font/google'
+import { Geist, Lora } from 'next/font/google'
 import { Toaster } from '@/components/ui/sonner'
 import { Providers } from '@/components/providers'
 import './globals.css'
 
 const geist = Geist({ subsets: ['latin'], variable: '--font-sans' })
+const lora = Lora({ subsets: ['latin'], variable: '--font-serif' })
 
 export const metadata: Metadata = {
   title: 'Earmarked — Find cheap used books',
@@ -14,7 +15,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geist.variable} antialiased`}>
+      <body className={`${geist.variable} ${lora.variable} antialiased`}>
         <Providers>
           {children}
           <Toaster />

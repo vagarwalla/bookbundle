@@ -204,7 +204,7 @@ export default function CartPage({ params }: { params: Promise<{ slug: string }>
           </Link>
           <BookOpen className="h-5 w-5 text-primary" />
           <div className="flex-1 min-w-0">
-            <h1 className="font-semibold text-base leading-tight">{cart.name}</h1>
+            <h1 className="font-serif font-semibold text-base leading-tight">{cart.name}</h1>
             <p className="text-xs text-muted-foreground">{items.length} book{items.length !== 1 ? 's' : ''}</p>
           </div>
           <ThemeToggle />
@@ -232,18 +232,23 @@ export default function CartPage({ params }: { params: Promise<{ slug: string }>
               <p>Search for a book above to add it to your stack.</p>
             </div>
           ) : (
-            <div className="space-y-2 max-h-[calc(100vh-220px)] overflow-y-auto pr-1">
-              {items.map((item) => (
-                <CartItemCard
-                  key={item.id}
-                  item={item}
-                  onUpdate={handleUpdateItem}
-                  onRemove={handleRemoveItem}
-                  onChangeCover={handleChangeCover}
-                  onPickCover={handlePickCover}
-                />
-              ))}
-            </div>
+            <>
+              <div className="bookcase-interior">
+                <div className="space-y-2 max-h-[calc(100vh-240px)] overflow-y-auto pr-1">
+                  {items.map((item) => (
+                    <CartItemCard
+                      key={item.id}
+                      item={item}
+                      onUpdate={handleUpdateItem}
+                      onRemove={handleRemoveItem}
+                      onChangeCover={handleChangeCover}
+                      onPickCover={handlePickCover}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="shelf-plank" />
+            </>
           )}
         </div>
 

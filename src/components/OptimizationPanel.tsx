@@ -497,6 +497,142 @@ const hasUnpricedItems = items.some((i) => !i.isbn_preferred)
         </p>
       )}
 
+      {/* Source tabs + optimization results */}
+      {searched && Object.keys(resultsBySource).length > 0 && foundAnyListings && (() => {
+        const activeResult = resultsBySource[sourceTab] ?? null
+        const hasDirectRetailers = activeResult?.groups.some(
+          (g) => g.seller_id === 'thriftbooks' || g.seller_id === 'betterworldbooks'
+        ) ?? false
+        const hasAbeBooksSellers = activeResult?.groups.some(
+          (g) => g.seller_id !== 'thriftbooks' && g.seller_id !== 'betterworldbooks'
+        ) ?? false
+        const shippingNote = hasAbeBooksSellers && hasDirectRetailers
+          ? 'Shipping est.: $3.99/order for ThriftBooks & Better World Books; $3.99 + $1.99/book for AbeBooks sellers.'
+          : hasDirectRetailers
+            ? 'Shipping est.: $3.99 per order (flat rate for direct retailers).'
+            : 'Shipping est.: $3.99 first book + $1.99 each additional from same seller.'
+
+        return (
+          <div className="space-y-3">
+            {/* Source comparison tabs */}
+            <div className="grid grid-cols-4 rounded-lg border overflow-hidden text-xs">
+              {(Object.keys(SOURCE_META) as SourceId[]).map((src) => {
+                const r = resultsBySource[src]
+                const hasResult = r && r.groups.length > 0
+                const isActive = sourceTab === src
+                return (
+                  <button
+                    key={src}
+                    onClick={() => hasResult && setSourceTab(src)}
+                    className={`py-2 px-1 text-center transition-colors border-r last:border-r-0 ${
+                      isActive
+                        ? 'bg-primary text-primary-foreground'
+                        : hasResult
+                          ? 'hover:bg-muted text-muted-foreground cursor-pointer'
+                          : 'text-muted-foreground/40 cursor-default bg-muted/30'
+                    }`}
+                  >
+                    <div className="font-medium truncate">{SOURCE_META[src].shortLabel}</div>
+                    <div className={`tabular-nums ${isActive ? 'text-primary-foreground' : hasResult ? 'text-foreground font-semibold' : ''}`}>
+                      {hasResult ? `$${r!.grand_total.toFixed(2)}` : '—'}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+
+            {activeResult && activeResult.groups.length > 0 ? (
+              <>
+                {activeResult.groups.map((group) => (
+                  <Card key={group.seller_id} className="overflow-hidden">
+                    <CardHeader className="py-2 px-3 bg-muted/50 flex-row items-center justify-between space-y-0">
+                      <CardTitle className="text-sm font-medium">{group.seller_name}</CardTitle>
+                      <span className="text-sm text-muted-foreground">
+                        {group.assignments.length} book{group.assignments.length !== 1 ? 's' : ''}
+                      </span>
+                    </CardHeader>
+                    <CardContent className="py-2 px-3 space-y-1.5">
+                      {group.assignments.map(({ item, listing, quantity, subtotal }) => (
+                        <div key={item.id} className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <a
+                              href={listing.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="truncate text-sm hover:underline"
+                            >
+                              {item.title}
+                            </a>
+                            {quantity > 1 && (
+                              <Badge variant="outline" className="text-xs shrink-0">×{quantity}</Badge>
+                            )}
+                            <Badge variant="secondary" className="text-xs shrink-0 capitalize">
+                              {listing.condition.replace('Used - ', '')}
+                            </Badge>
+                            {listing.isbn !== item.isbn_preferred && (
+                              <Badge variant="outline" className="text-xs shrink-0 text-muted-foreground">
+                                alt. edition
+                              </Badge>
+                            )}
+                          </div>
+                          <span className="shrink-0 font-medium ml-2">${subtotal.toFixed(2)}</span>
+                        </div>
+                      ))}
+                      <div className="border-t pt-1.5 flex justify-between text-sm text-muted-foreground">
+                        <span>Shipping (est.): ${group.shipping.toFixed(2)}</span>
+                        <span className="font-semibold text-foreground">
+                          Group total: ${group.group_total.toFixed(2)}
+                        </span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full mt-1 h-8 text-sm"
+                        onClick={() => openGroup(group.assignments.map((a) => a.listing.url))}
+                      >
+                        <ExternalLink className="h-3 w-3 mr-1.5" />
+                        Open {group.assignments.length} listing{group.assignments.length !== 1 ? 's' : ''} on {group.seller_name}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+
+                <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                  <div>
+                    <div className="font-semibold text-green-900">
+                      {SOURCE_META[sourceTab].label}: ${activeResult.grand_total.toFixed(2)}
+                    </div>
+                    <div className="text-sm text-green-700">incl. estimated shipping</div>
+                  </div>
+                  {activeResult.savings > 0.5 && (
+                    <Badge className="bg-green-600 text-white">
+                      <TrendingDown className="h-3 w-3 mr-1" />
+                      Save ${activeResult.savings.toFixed(2)}
+                    </Badge>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="text-sm text-muted-foreground text-center py-4 border rounded-lg">
+                No listings found from {SOURCE_META[sourceTab].label}.{' '}
+                {sourceTab !== 'best' && items[0]?.isbn_preferred && (
+                  <a
+                    href={SOURCE_META[sourceTab].searchUrl(items[0].isbn_preferred)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:text-foreground"
+                  >
+                    Search manually
+                  </a>
+                )}
+              </div>
+            )}
+
+            <p className="text-xs text-muted-foreground text-center">{shippingNote} Actual rates may vary.</p>
+          </div>
+        )
+      })()}
+
       {/* Per-book listing previews */}
       {searched && itemListingCounts.length > 0 && (
         <div className="rounded-lg border bg-card divide-y">
@@ -647,142 +783,6 @@ const hasUnpricedItems = items.some((i) => !i.isbn_preferred)
           Re-optimizing with relaxed constraints…
         </div>
       )}
-
-      {/* Source tabs + optimization results */}
-      {searched && Object.keys(resultsBySource).length > 0 && foundAnyListings && (() => {
-        const activeResult = resultsBySource[sourceTab] ?? null
-        const hasDirectRetailers = activeResult?.groups.some(
-          (g) => g.seller_id === 'thriftbooks' || g.seller_id === 'betterworldbooks'
-        ) ?? false
-        const hasAbeBooksSellers = activeResult?.groups.some(
-          (g) => g.seller_id !== 'thriftbooks' && g.seller_id !== 'betterworldbooks'
-        ) ?? false
-        const shippingNote = hasAbeBooksSellers && hasDirectRetailers
-          ? 'Shipping est.: $3.99/order for ThriftBooks & Better World Books; $3.99 + $1.99/book for AbeBooks sellers.'
-          : hasDirectRetailers
-            ? 'Shipping est.: $3.99 per order (flat rate for direct retailers).'
-            : 'Shipping est.: $3.99 first book + $1.99 each additional from same seller.'
-
-        return (
-          <div className="space-y-3">
-            {/* Source comparison tabs */}
-            <div className="grid grid-cols-4 rounded-lg border overflow-hidden text-xs">
-              {(Object.keys(SOURCE_META) as SourceId[]).map((src) => {
-                const r = resultsBySource[src]
-                const hasResult = r && r.groups.length > 0
-                const isActive = sourceTab === src
-                return (
-                  <button
-                    key={src}
-                    onClick={() => hasResult && setSourceTab(src)}
-                    className={`py-2 px-1 text-center transition-colors border-r last:border-r-0 ${
-                      isActive
-                        ? 'bg-primary text-primary-foreground'
-                        : hasResult
-                          ? 'hover:bg-muted text-muted-foreground cursor-pointer'
-                          : 'text-muted-foreground/40 cursor-default bg-muted/30'
-                    }`}
-                  >
-                    <div className="font-medium truncate">{SOURCE_META[src].shortLabel}</div>
-                    <div className={`tabular-nums ${isActive ? 'text-primary-foreground' : hasResult ? 'text-foreground font-semibold' : ''}`}>
-                      {hasResult ? `$${r!.grand_total.toFixed(2)}` : '—'}
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-
-            {activeResult && activeResult.groups.length > 0 ? (
-              <>
-                <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-                  <div>
-                    <div className="font-semibold text-green-900">
-                      {SOURCE_META[sourceTab].label}: ${activeResult.grand_total.toFixed(2)}
-                    </div>
-                    <div className="text-sm text-green-700">incl. estimated shipping</div>
-                  </div>
-                  {activeResult.savings > 0.5 && (
-                    <Badge className="bg-green-600 text-white">
-                      <TrendingDown className="h-3 w-3 mr-1" />
-                      Save ${activeResult.savings.toFixed(2)}
-                    </Badge>
-                  )}
-                </div>
-
-                {activeResult.groups.map((group) => (
-                  <Card key={group.seller_id} className="overflow-hidden">
-                    <CardHeader className="py-2 px-3 bg-muted/50 flex-row items-center justify-between space-y-0">
-                      <CardTitle className="text-sm font-medium">{group.seller_name}</CardTitle>
-                      <span className="text-sm text-muted-foreground">
-                        {group.assignments.length} book{group.assignments.length !== 1 ? 's' : ''}
-                      </span>
-                    </CardHeader>
-                    <CardContent className="py-2 px-3 space-y-1.5">
-                      {group.assignments.map(({ item, listing, quantity, subtotal }) => (
-                        <div key={item.id} className="flex items-center justify-between text-sm">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <a
-                              href={listing.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="truncate text-sm hover:underline"
-                            >
-                              {item.title}
-                            </a>
-                            {quantity > 1 && (
-                              <Badge variant="outline" className="text-xs shrink-0">×{quantity}</Badge>
-                            )}
-                            <Badge variant="secondary" className="text-xs shrink-0 capitalize">
-                              {listing.condition.replace('Used - ', '')}
-                            </Badge>
-                            {listing.isbn !== item.isbn_preferred && (
-                              <Badge variant="outline" className="text-xs shrink-0 text-muted-foreground">
-                                alt. edition
-                              </Badge>
-                            )}
-                          </div>
-                          <span className="shrink-0 font-medium ml-2">${subtotal.toFixed(2)}</span>
-                        </div>
-                      ))}
-                      <div className="border-t pt-1.5 flex justify-between text-sm text-muted-foreground">
-                        <span>Shipping (est.): ${group.shipping.toFixed(2)}</span>
-                        <span className="font-semibold text-foreground">
-                          Group total: ${group.group_total.toFixed(2)}
-                        </span>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="w-full mt-1 h-8 text-sm"
-                        onClick={() => openGroup(group.assignments.map((a) => a.listing.url))}
-                      >
-                        <ExternalLink className="h-3 w-3 mr-1.5" />
-                        Open {group.assignments.length} listing{group.assignments.length !== 1 ? 's' : ''} on {group.seller_name}
-                      </Button>
-                    </CardContent>
-                  </Card>
-                ))}
-              </>
-            ) : (
-              <div className="text-sm text-muted-foreground text-center py-4 border rounded-lg">
-                No listings found from {SOURCE_META[sourceTab].label}.{' '}
-                {sourceTab !== 'best' && items[0]?.isbn_preferred && (
-                  <a
-                    href={SOURCE_META[sourceTab].searchUrl(items[0].isbn_preferred)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline hover:text-foreground"
-                  >
-                    Search manually
-                  </a>
-                )}
-              </div>
-            )}
-
-            <p className="text-xs text-muted-foreground text-center">{shippingNote} Actual rates may vary.</p>
-          </div>
-        )
-      })()}
     </div>
   )
 }

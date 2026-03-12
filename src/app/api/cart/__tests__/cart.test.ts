@@ -2,7 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
 // Mock supabase before importing the route handlers
-vi.mock('@/lib/supabase', () => ({ supabase: { from: vi.fn() } }))
+vi.mock('@/lib/supabase', () => ({
+  supabase: {
+    from: vi.fn(),
+  },
+}))
 
 import { GET, POST } from '../route'
 import { supabase } from '@/lib/supabase'
@@ -22,13 +26,28 @@ function makeCartRow(overrides: Record<string, unknown> = {}) {
   }
 }
 
-/** Build the chained supabase mock: from().insert().select().single() */
-function mockInsertChain(result: { data?: unknown; error?: unknown }) {
+/**
+ * Mock both the uniqueSlug check (select+or) and the insert chain.
+ * existingSlugs: slugs already in the DB (for uniqueness check)
+ */
+function mockInsertChain(
+  result: { data?: unknown; error?: unknown },
+  existingSlugs: string[] = [],
+) {
+  // First call: uniqueSlug query — from('carts').select('slug').or(...)
+  const orFn = vi.fn().mockResolvedValue({ data: existingSlugs.map((s) => ({ slug: s })), error: null })
+  const selectSlug = vi.fn().mockReturnValue({ or: orFn })
+
+  // Second call: insert chain — from('carts').insert(...).select().single()
   const single = vi.fn().mockResolvedValue({ data: result.data ?? null, error: result.error ?? null })
-  const select = vi.fn().mockReturnValue({ single })
-  const insert = vi.fn().mockReturnValue({ select })
-  vi.mocked(supabase.from).mockReturnValue({ insert } as ReturnType<typeof supabase.from>)
-  return { insert, select, single }
+  const selectInsert = vi.fn().mockReturnValue({ single })
+  const insert = vi.fn().mockReturnValue({ select: selectInsert })
+
+  vi.mocked(supabase.from)
+    .mockReturnValueOnce({ select: selectSlug } as ReturnType<typeof supabase.from>)
+    .mockReturnValueOnce({ insert } as ReturnType<typeof supabase.from>)
+
+  return { insert, single }
 }
 
 /** Build the chained supabase mock: from().select().order() */
@@ -55,7 +74,7 @@ beforeEach(() => {
 
 describe('POST /api/cart — create cart', () => {
   it('creates a cart and returns 201 with the new cart data', async () => {
-    const cart = makeCartRow({ name: 'Summer Reading' })
+    const cart = makeCartRow({ name: 'Summer Reading', slug: 'summer-reading' })
     mockInsertChain({ data: cart })
 
     const res = await POST(postRequest({ name: 'Summer Reading' }))
@@ -63,19 +82,51 @@ describe('POST /api/cart — create cart', () => {
     expect(res.status).toBe(201)
     const body = await res.json()
     expect(body.name).toBe('Summer Reading')
-    expect(body.slug).toBe('abc12345')
+    expect(body.slug).toBe('summer-reading')
     expect(body.id).toBe('cart-uuid-1')
   })
 
-  it('inserts a generated slug and the trimmed name', async () => {
-    const { insert } = mockInsertChain({ data: makeCartRow() })
+  it('derives slug from the name and trims whitespace', async () => {
+    const { insert } = mockInsertChain({ data: makeCartRow({ slug: 'wishlist' }) })
 
     await POST(postRequest({ name: '  Wishlist  ' }))
 
     const insertArg = insert.mock.calls[0][0] as Record<string, string>
-    expect(insertArg.name).toBe('Wishlist')        // whitespace trimmed
-    expect(typeof insertArg.slug).toBe('string')   // auto-generated
-    expect(insertArg.slug.length).toBeGreaterThan(0)
+    expect(insertArg.name).toBe('Wishlist')
+    expect(insertArg.slug).toBe('wishlist')
+  })
+
+  it('converts spaces and special chars to hyphens in the slug', async () => {
+    const { insert } = mockInsertChain({ data: makeCartRow({ slug: 'my-reading-list' }) })
+
+    await POST(postRequest({ name: 'My Reading List' }))
+
+    const insertArg = insert.mock.calls[0][0] as Record<string, string>
+    expect(insertArg.slug).toBe('my-reading-list')
+  })
+
+  it('appends -2 when base slug is already taken', async () => {
+    const { insert } = mockInsertChain(
+      { data: makeCartRow({ slug: 'wishlist-2' }) },
+      ['wishlist'],
+    )
+
+    await POST(postRequest({ name: 'Wishlist' }))
+
+    const insertArg = insert.mock.calls[0][0] as Record<string, string>
+    expect(insertArg.slug).toBe('wishlist-2')
+  })
+
+  it('appends -3 when both base slug and -2 are taken', async () => {
+    const { insert } = mockInsertChain(
+      { data: makeCartRow({ slug: 'wishlist-3' }) },
+      ['wishlist', 'wishlist-2'],
+    )
+
+    await POST(postRequest({ name: 'Wishlist' }))
+
+    const insertArg = insert.mock.calls[0][0] as Record<string, string>
+    expect(insertArg.slug).toBe('wishlist-3')
   })
 
   it('returns 400 when name is missing', async () => {
@@ -90,26 +141,13 @@ describe('POST /api/cart — create cart', () => {
     expect(res.status).toBe(400)
   })
 
-  it('returns 500 when Supabase returns an error', async () => {
-    mockInsertChain({ error: { message: 'duplicate key value' } })
+  it('returns 500 when Supabase insert returns an error', async () => {
+    mockInsertChain({ error: { message: 'connection error' } })
 
-    const res = await POST(postRequest({ name: 'Duplicate' }))
+    const res = await POST(postRequest({ name: 'My Stack' }))
     expect(res.status).toBe(500)
     const body = await res.json()
-    expect(body.error).toBe('duplicate key value')
-  })
-
-  it('generates a unique slug each time', async () => {
-    const { insert: insert1 } = mockInsertChain({ data: makeCartRow() })
-    await POST(postRequest({ name: 'Cart A' }))
-    const slug1 = (insert1.mock.calls[0][0] as Record<string, string>).slug
-
-    mockInsertChain({ data: makeCartRow() })
-    const { insert: insert2 } = mockInsertChain({ data: makeCartRow() })
-    await POST(postRequest({ name: 'Cart B' }))
-    const slug2 = (insert2.mock.calls[0][0] as Record<string, string>).slug
-
-    expect(slug1).not.toBe(slug2)
+    expect(body.error).toBe('connection error')
   })
 })
 

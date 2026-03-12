@@ -1,8 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { customAlphabet } from 'nanoid'
 
-const nanoid = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 8)
+function toSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+async function uniqueSlug(base: string): Promise<string> {
+  const { data } = await supabase
+    .from('carts')
+    .select('slug')
+    .or(`slug.eq.${base},slug.like.${base}-%`)
+
+  const existing = new Set((data || []).map((r: { slug: string }) => r.slug))
+  if (!existing.has(base)) return base
+
+  let n = 2
+  while (existing.has(`${base}-${n}`)) n++
+  return `${base}-${n}`
+}
 
 export async function GET() {
   try {
@@ -44,7 +63,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Name required' }, { status: 400 })
     }
 
-    const slug = nanoid()
+    const slug = await uniqueSlug(toSlug(name.trim()))
     const { data, error } = await supabase
       .from('carts')
       .insert({ slug, name: name.trim() })

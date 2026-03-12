@@ -61,7 +61,7 @@ export default function HomePage() {
 
       {/* Hero */}
       <section className="max-w-5xl mx-auto px-4 py-16 text-center">
-        <h1 className="text-5xl sm:text-6xl font-bold tracking-tight mb-5 leading-tight">
+        <h1 className="font-serif text-5xl sm:text-6xl font-bold tracking-tight mb-5 leading-tight">
           Stack more books,<br />spend less
         </h1>
         <p className="text-muted-foreground text-xl max-w-xl mx-auto mb-10">
