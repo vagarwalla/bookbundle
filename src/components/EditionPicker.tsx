@@ -490,7 +490,7 @@ function EditionDetailPanel({ group }: { group: CoverGroup | null }) {
       )}
       <div className="space-y-3">
         {editions.map((e) => (
-          <div key={e.isbn} className="text-xs space-y-1 border-b border-border last:border-0 pb-3 last:pb-0">
+          <div key={e.isbn} className="text-sm space-y-1 border-b border-border last:border-0 pb-3 last:pb-0">
             {e.edition_name && <div className="font-semibold text-sm text-foreground">{e.edition_name}</div>}
             {e.publisher && <div className="text-muted-foreground">{e.publisher}</div>}
             <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-muted-foreground">

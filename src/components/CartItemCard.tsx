@@ -130,7 +130,7 @@ export function CartItemCard({ item, onUpdate, onRemove, onChangeCover, onPickCo
         )}
         <div className="flex-1 min-w-0">
           <span className="font-medium text-sm leading-tight truncate block">{item.title}</span>
-          {item.author && <span className="text-xs text-muted-foreground truncate block">{item.author}</span>}
+          {item.author && <span className="text-sm text-muted-foreground truncate block">{item.author}</span>}
         </div>
         <button onClick={() => setCollapsed(false)} className="text-muted-foreground hover:text-foreground shrink-0" title="Expand">
           <ChevronDown className="h-4 w-4" />

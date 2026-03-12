@@ -541,12 +541,22 @@ const hasUnpricedItems = items.some((i) => !i.isbn_preferred)
               })}
             </div>
 
+            {missingItems.length > 0 && (
+              <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                <span>
+                  {missingItems.length === 1 ? '1 book is' : `${missingItems.length} books are`} missing from this total.{' '}
+                  <a href="#missing-books" className="underline font-medium hover:text-amber-900">See below</a>
+                </span>
+              </div>
+            )}
+
             {activeResult && activeResult.groups.length > 0 ? (
               <>
                 {activeResult.groups.map((group) => (
                   <Card key={group.seller_id} className="overflow-hidden">
                     <CardHeader className="py-2 px-3 bg-muted/50 flex-row items-center justify-between space-y-0">
-                      <CardTitle className="text-sm font-medium">{group.seller_name}</CardTitle>
+                      <CardTitle className="text-base font-medium">{group.seller_name}</CardTitle>
                       <span className="text-sm text-muted-foreground">
                         {group.assignments.length} book{group.assignments.length !== 1 ? 's' : ''}
                       </span>
@@ -633,57 +643,9 @@ const hasUnpricedItems = items.some((i) => !i.isbn_preferred)
         )
       })()}
 
-      {/* Per-book listing previews */}
-      {searched && itemListingCounts.length > 0 && (
-        <div className="rounded-lg border bg-card divide-y">
-          {itemListingCounts.map(({ item, listings, conditions, maxPrice }) => {
-            if (listings.length === 0) return null
-            const cheaper = findCheaperSuggestion(item, listingsByIsbn, listings, conditions, maxPrice)
-            const showEditionPicker = editionPickerFor === item.id
-            return (
-              <div key={item.id} className="px-3 py-2 space-y-1">
-                <BookListings
-                  item={item}
-                  listings={listings}
-                  cheaper={cheaper}
-                  onAcceptCheaper={(newConditions) => {
-                    const next = { ...conditionOverrides, [item.id]: newConditions }
-                    applyRelaxation(item.id, next, maxPriceOverrides)
-                  }}
-                  onTryOtherEditions={item.work_id ? () => setEditionPickerFor(showEditionPicker ? null : item.id) : null}
-                />
-                {showEditionPicker && (
-                  <EditionPickerInline
-                    item={item}
-                    cartSlug={cartSlug}
-                    listingsByIsbn={listingsByIsbn}
-                    conditionOverrides={conditionOverrides}
-                    maxPriceOverrides={maxPriceOverrides}
-                    isbnCandidateOverrides={isbnCandidateOverrides}
-                    onSaved={(newIsbnOverrides, newListings) => {
-                      setIsbnCandidateOverrides(newIsbnOverrides)
-                      setListingsByIsbn(newListings)
-                      setEditionPickerFor(null)
-                      const overriddenItems = itemsWithIsbn.map((i) => ({
-                        ...i,
-                        conditions: conditionOverrides[i.id] ?? i.conditions,
-                        max_price: i.id in maxPriceOverrides ? maxPriceOverrides[i.id] : i.max_price,
-                        isbns_candidates: newIsbnOverrides[i.id] ?? i.isbns_candidates,
-                      }))
-                      updateAllResults(newListings, overriddenItems).catch(() => {})
-                    }}
-                    onCancel={() => setEditionPickerFor(null)}
-                  />
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
-
       {/* Missing books — with relaxation suggestions */}
       {searched && missingItems.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 divide-y divide-amber-100">
+        <div id="missing-books" className="rounded-lg border border-amber-200 bg-amber-50 divide-y divide-amber-100">
           <div className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-amber-800">
             <AlertCircle className="h-3.5 w-3.5 shrink-0" />
             No listings found for {missingItems.length === 1 ? 'this book' : `${missingItems.length} books`} — try relaxing constraints
@@ -769,6 +731,54 @@ const hasUnpricedItems = items.some((i) => !i.isbn_preferred)
                       </button>
                     )}
                   </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Per-book listing previews */}
+      {searched && itemListingCounts.length > 0 && (
+        <div className="rounded-lg border bg-card divide-y">
+          {itemListingCounts.map(({ item, listings, conditions, maxPrice }) => {
+            if (listings.length === 0) return null
+            const cheaper = findCheaperSuggestion(item, listingsByIsbn, listings, conditions, maxPrice)
+            const showEditionPicker = editionPickerFor === item.id
+            return (
+              <div key={item.id} className="px-3 py-2 space-y-1">
+                <BookListings
+                  item={item}
+                  listings={listings}
+                  cheaper={cheaper}
+                  onAcceptCheaper={(newConditions) => {
+                    const next = { ...conditionOverrides, [item.id]: newConditions }
+                    applyRelaxation(item.id, next, maxPriceOverrides)
+                  }}
+                  onTryOtherEditions={item.work_id ? () => setEditionPickerFor(showEditionPicker ? null : item.id) : null}
+                />
+                {showEditionPicker && (
+                  <EditionPickerInline
+                    item={item}
+                    cartSlug={cartSlug}
+                    listingsByIsbn={listingsByIsbn}
+                    conditionOverrides={conditionOverrides}
+                    maxPriceOverrides={maxPriceOverrides}
+                    isbnCandidateOverrides={isbnCandidateOverrides}
+                    onSaved={(newIsbnOverrides, newListings) => {
+                      setIsbnCandidateOverrides(newIsbnOverrides)
+                      setListingsByIsbn(newListings)
+                      setEditionPickerFor(null)
+                      const overriddenItems = itemsWithIsbn.map((i) => ({
+                        ...i,
+                        conditions: conditionOverrides[i.id] ?? i.conditions,
+                        max_price: i.id in maxPriceOverrides ? maxPriceOverrides[i.id] : i.max_price,
+                        isbns_candidates: newIsbnOverrides[i.id] ?? i.isbns_candidates,
+                      }))
+                      updateAllResults(newListings, overriddenItems).catch(() => {})
+                    }}
+                    onCancel={() => setEditionPickerFor(null)}
+                  />
                 )}
               </div>
             )
