@@ -8,12 +8,6 @@ import { CreateCartDialog } from '@/components/CreateCartDialog'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import type { Cart } from '@/lib/types'
 
-const SPINE_COLORS = [
-  'bg-amber-800', 'bg-emerald-800', 'bg-red-900', 'bg-indigo-800',
-  'bg-stone-600', 'bg-teal-800', 'bg-rose-900', 'bg-violet-900',
-  'bg-orange-800', 'bg-cyan-900', 'bg-lime-800', 'bg-fuchsia-900',
-]
-const SPINE_HEIGHTS = ['h-36', 'h-40', 'h-32', 'h-44', 'h-36', 'h-44', 'h-32', 'h-40']
 
 export default function HomePage() {
   const [carts, setCarts] = useState<Cart[]>([])
@@ -107,45 +101,35 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Stacks as books on a shelf */}
+      {/* Stacks list */}
       <section className="max-w-5xl mx-auto px-4 pb-16 flex-1 w-full">
         {loading ? (
-          <>
-            <div className="bookcase-interior min-h-[196px] flex items-end gap-2">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className={`shrink-0 w-14 rounded-sm bg-muted/60 animate-pulse ${SPINE_HEIGHTS[i % SPINE_HEIGHTS.length]}`} />
+          <div className="max-w-sm space-y-2">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-14 bg-muted rounded-lg animate-pulse" />
+            ))}
+          </div>
+        ) : carts.length === 0 ? (
+          <p className="text-muted-foreground italic">No stacks yet — create one to get started.</p>
+        ) : (
+          <div className="max-w-sm">
+            <h2 className="text-base font-semibold mb-3 text-muted-foreground">All stacks — visible to everyone</h2>
+            <div className="space-y-1">
+              {carts.map((cart) => (
+                <Link key={cart.id} href={`/stack/${cart.slug}`}>
+                  <div className="flex items-center justify-between px-4 py-3 rounded-lg border bg-card hover:shadow-sm hover:border-primary/40 transition-all group cursor-pointer">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-base shrink-0">📚</span>
+                      <span className="font-medium truncate group-hover:text-primary transition-colors">{cart.name}</span>
+                    </div>
+                    <span className="text-sm text-muted-foreground shrink-0 ml-3">
+                      {cart.item_count ?? 0} {cart.item_count === 1 ? 'book' : 'books'}
+                    </span>
+                  </div>
+                </Link>
               ))}
             </div>
-            <div className="shelf-plank" />
-          </>
-        ) : carts.length === 0 ? (
-          <>
-            <div className="bookcase-interior min-h-[196px] flex items-center justify-center">
-              <p className="text-muted-foreground text-sm italic">Your shelf is empty — start a stack!</p>
-            </div>
-            <div className="shelf-plank" />
-          </>
-        ) : (
-          <>
-            <h2 className="text-lg font-semibold mb-4">All stacks <span className="text-muted-foreground font-normal text-sm">— visible to everyone</span></h2>
-            <div className="bookcase-interior">
-              <div className="flex gap-2 items-end overflow-x-auto">
-                {carts.map((cart, i) => (
-                  <Link key={cart.id} href={`/stack/${cart.slug}`} title={`${cart.name} · ${cart.item_count ?? 0} books`}>
-                    <div className={`shrink-0 w-14 rounded-sm flex items-center justify-center cursor-pointer hover:brightness-110 hover:-translate-y-2 transition-all duration-150 ${SPINE_COLORS[i % SPINE_COLORS.length]} ${SPINE_HEIGHTS[i % SPINE_HEIGHTS.length]}`}>
-                      <span
-                        className="text-xs font-semibold text-white/90 px-1 leading-tight w-full text-center line-clamp-4"
-                        style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
-                      >
-                        {cart.name}
-                      </span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </div>
-            <div className="shelf-plank" />
-          </>
+          </div>
         )}
       </section>
 
