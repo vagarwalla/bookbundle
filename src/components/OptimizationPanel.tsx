@@ -340,17 +340,31 @@ function EditionPickerInline({
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-type SourceId = 'best' | 'abe' | 'thriftbooks' | 'bwb'
+type SourceId = 'best' | 'abe' | 'thriftbooks' | 'bwb' | 'combined'
 
 const SOURCE_META: Record<SourceId, { label: string; shortLabel: string; searchUrl: (isbn: string) => string }> = {
   best:         { label: 'Best Overall',       shortLabel: 'Best',       searchUrl: () => '#' },
   abe:          { label: 'AbeBooks',           shortLabel: 'AbeBooks',   searchUrl: (isbn) => `https://www.abebooks.com/servlet/SearchResults?isbn=${isbn}&sortby=17` },
   thriftbooks:  { label: 'ThriftBooks',        shortLabel: 'ThriftBooks',searchUrl: (isbn) => `https://www.thriftbooks.com/browse/?b.search=${isbn}` },
   bwb:          { label: 'Better World Books', shortLabel: 'BWB',        searchUrl: (isbn) => `https://www.betterworldbooks.com/search/results?q=${isbn}` },
+  combined:     { label: 'Combined (all sources)', shortLabel: 'Combined', searchUrl: () => '#' },
+}
+
+// Source badge shown on seller groups in the Combined tab
+const SOURCE_BADGE: Record<'abe' | 'thriftbooks' | 'bwb', { label: string; className: string }> = {
+  abe:         { label: 'AbeBooks',    className: 'bg-amber-100 text-amber-800 border border-amber-300' },
+  thriftbooks: { label: 'ThriftBooks', className: 'bg-blue-100 text-blue-800 border border-blue-300' },
+  bwb:         { label: 'BWB',         className: 'bg-emerald-100 text-emerald-800 border border-emerald-300' },
+}
+
+function getSellerSource(sellerId: string): 'abe' | 'thriftbooks' | 'bwb' {
+  if (sellerId === 'thriftbooks') return 'thriftbooks'
+  if (sellerId === 'betterworldbooks') return 'bwb'
+  return 'abe'
 }
 
 function filterBySource(byIsbn: Record<string, Listing[]>, src: SourceId): Record<string, Listing[]> {
-  if (src === 'best') return byIsbn
+  if (src === 'best' || src === 'combined') return byIsbn
   const out: Record<string, Listing[]> = {}
   for (const [isbn, ls] of Object.entries(byIsbn)) {
     out[isbn] = ls.filter((l) =>
@@ -388,13 +402,14 @@ export function OptimizationPanel({ items, cartSlug }: Props) {
   const [editionPickerFor, setEditionPickerFor] = useState<string | null>(null)
 
   async function updateAllResults(byIsbn: Record<string, Listing[]>, itemsToOpt: CartItem[]) {
-    const [bestR, abeR, tbR, bwbR] = await Promise.all([
+    const [bestR, abeR, tbR, bwbR, combinedR] = await Promise.all([
       runOptimize(itemsToOpt, filterBySource(byIsbn, 'best')),
       runOptimize(itemsToOpt, filterBySource(byIsbn, 'abe')),
       runOptimize(itemsToOpt, filterBySource(byIsbn, 'thriftbooks')),
       runOptimize(itemsToOpt, filterBySource(byIsbn, 'bwb')),
+      runOptimize(itemsToOpt, filterBySource(byIsbn, 'combined')),
     ])
-    setResultsBySource({ best: bestR, abe: abeR, thriftbooks: tbR, bwb: bwbR })
+    setResultsBySource({ best: bestR, abe: abeR, thriftbooks: tbR, bwb: bwbR, combined: combinedR })
   }
 
   async function findDeals() {
@@ -515,7 +530,7 @@ const hasUnpricedItems = items.some((i) => !i.isbn_preferred)
         return (
           <div className="space-y-3">
             {/* Source comparison tabs */}
-            <div className="grid grid-cols-4 rounded-lg border overflow-hidden text-xs">
+            <div className="grid grid-cols-5 rounded-lg border overflow-hidden text-xs">
               {(Object.keys(SOURCE_META) as SourceId[]).map((src) => {
                 const r = resultsBySource[src]
                 const hasResult = r && r.groups.length > 0
@@ -556,8 +571,19 @@ const hasUnpricedItems = items.some((i) => !i.isbn_preferred)
                 {activeResult.groups.map((group) => (
                   <Card key={group.seller_id} className="overflow-hidden">
                     <CardHeader className="py-2 px-3 bg-muted/50 flex-row items-center justify-between space-y-0">
-                      <CardTitle className="text-base font-medium">{group.seller_name}</CardTitle>
-                      <span className="text-sm text-muted-foreground">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <CardTitle className="text-base font-medium truncate">{group.seller_name}</CardTitle>
+                        {sourceTab === 'combined' && (() => {
+                          const src = getSellerSource(group.seller_id)
+                          const badge = SOURCE_BADGE[src]
+                          return (
+                            <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded ${badge.className}`}>
+                              {badge.label}
+                            </span>
+                          )
+                        })()}
+                      </div>
+                      <span className="text-sm text-muted-foreground shrink-0">
                         {group.assignments.length} book{group.assignments.length !== 1 ? 's' : ''}
                       </span>
                     </CardHeader>
