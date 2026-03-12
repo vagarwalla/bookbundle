@@ -60,44 +60,48 @@ export default function HomePage() {
       </header>
 
       {/* Hero */}
-      <section className="max-w-5xl mx-auto px-4 py-16 text-center">
-        <h1 className="font-serif text-5xl sm:text-6xl font-bold tracking-tight mb-5 leading-tight">
-          Stack more books,<br />spend less
-        </h1>
-        <p className="text-muted-foreground text-xl max-w-xl mx-auto mb-10">
-          Build a list of books you want, pick your preferred edition and cover, and we&apos;ll find the cheapest way to buy them all by grouping sellers.
-        </p>
-        <Button size="lg" className="text-base px-8 h-12" onClick={() => setOpen(true)}>
-          <ShoppingCart className="h-5 w-5 mr-2" />
-          Start a Stack
-        </Button>
-        <div className="mt-12 flex justify-center">
-          <img
-            src="https://66.media.tumblr.com/tumblr_lnyexmyOR71qc3reoo1_500.gif"
-            alt="Harry Potter receiving a stack of books at Flourish and Blotts"
-            className="rounded-2xl shadow-lg max-w-sm w-full"
-          />
+      <section className="max-w-5xl mx-auto px-4 py-16">
+        <div className="flex flex-col lg:flex-row items-center gap-12">
+          <div className="flex-1 text-center lg:text-left">
+            <h1 className="text-5xl sm:text-6xl font-bold tracking-tight mb-5 leading-tight">
+              Because your TBR deserves a personal shopper.
+            </h1>
+            <p className="text-muted-foreground text-xl max-w-xl mb-10">
+              Tell us what you&apos;re after, pick your preferred edition and cover, and we&apos;ll track down second-hand copies across booksellers — grouped so you can order everything in one go.
+            </p>
+            <Button size="lg" className="text-base px-8 h-12" onClick={() => setOpen(true)}>
+              <ShoppingCart className="h-5 w-5 mr-2" />
+              Start a Stack
+            </Button>
+          </div>
+          <div className="shrink-0">
+            <img
+              src="https://66.media.tumblr.com/tumblr_lnyexmyOR71qc3reoo1_500.gif"
+              alt="Harry Potter receiving a stack of books at Flourish and Blotts"
+              className="rounded-2xl shadow-lg w-72 sm:w-80"
+            />
+          </div>
         </div>
       </section>
 
       {/* How it works */}
       <section className="max-w-5xl mx-auto px-4 pb-14">
-        <h2 className="text-2xl font-bold text-center mb-8">How it works</h2>
+        <h2 className="text-2xl font-bold text-center mb-8">How the magic works</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           <div className="text-center p-7 rounded-2xl bg-muted/50">
             <div className="text-4xl mb-4">🔍</div>
-            <h3 className="font-semibold text-lg mb-2">1. Build your stack</h3>
-            <p className="text-muted-foreground text-sm leading-relaxed">Create a stack and search for books by title or author. Add as many as you like.</p>
+            <h3 className="font-semibold text-lg mb-2">Build your stack</h3>
+            <p className="text-muted-foreground text-sm leading-relaxed">Search for books by title or author and add them to your stack. Go on, add them all.</p>
           </div>
           <div className="text-center p-7 rounded-2xl bg-muted/50">
             <div className="text-4xl mb-4">📖</div>
-            <h3 className="font-semibold text-lg mb-2">2. Pick your edition</h3>
-            <p className="text-muted-foreground text-sm leading-relaxed">Choose which edition and cover you want for each book. See real listings with prices.</p>
+            <h3 className="font-semibold text-lg mb-2">Pick your edition</h3>
+            <p className="text-muted-foreground text-sm leading-relaxed">Choose your preferred edition and cover for each book. First editions, beloved paperbacks — your call.</p>
           </div>
           <div className="text-center p-7 rounded-2xl bg-muted/50">
-            <div className="text-4xl mb-4">💸</div>
-            <h3 className="font-semibold text-lg mb-2">3. Buy cheaply</h3>
-            <p className="text-muted-foreground text-sm leading-relaxed">We group sellers so you place fewer orders — and pay less shipping overall.</p>
+            <div className="text-4xl mb-4">📦</div>
+            <h3 className="font-semibold text-lg mb-2">Order in one go</h3>
+            <p className="text-muted-foreground text-sm leading-relaxed">We group your books by seller so you place the fewest orders possible. No twelve separate checkouts.</p>
           </div>
         </div>
         <div className="mt-8 p-4 rounded-xl border bg-muted/30 text-sm text-center max-w-2xl mx-auto">
