@@ -387,7 +387,7 @@ function EditionCard({
           <Star className="h-3 w-3 text-white fill-white" />
         </div>
       )}
-      <div className="aspect-[2/3] bg-muted rounded overflow-hidden mb-3 flex items-center justify-center">
+      <div className="aspect-[2/3] bg-muted rounded overflow-hidden mb-3 flex items-center justify-center min-h-[88px]">
         {group.cover_url ? (
           <img src={group.cover_url} alt={rep.title} className="w-full h-full object-cover" />
         ) : (
@@ -952,7 +952,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-6xl w-[95vw] max-h-[90vh] flex flex-col">
+      <DialogContent className="sm:max-w-6xl max-w-full h-[100dvh] sm:h-auto sm:max-h-[90vh] flex flex-col rounded-none sm:rounded-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 flex-wrap">
             <span>Choose editions — {book?.title}</span>
@@ -1159,7 +1159,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
         </div>
 
         {/* Detail panel */}
-        <div className="w-52 shrink-0 border-l border-border ml-3">
+        <div className="hidden sm:flex w-52 shrink-0 border-l border-border ml-3 flex-col">
           <EditionDetailPanel
             group={hoveredGroup ?? (primaryKey ? (coverGroups.find((g) => g.key === primaryKey) ?? null) : null)}
           />
@@ -1167,7 +1167,7 @@ export function EditionPicker({ book, open, onOpenChange, onConfirm, initialIsbn
 
         </div>{/* end split pane */}
 
-        <div className="flex gap-2 shrink-0 pt-2 border-t items-center">
+        <div className="flex gap-2 shrink-0 pt-2 border-t items-center bg-background">
           {selectedCount > 0 && (
             <div className="flex items-center gap-2 min-w-0">
               {/* Cover thumbnails for selected editions */}

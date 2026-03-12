@@ -64,7 +64,7 @@ export default function HomePage() {
           Stack more books.
         </h1>
         <p className="text-muted-foreground text-base mb-4">Build a wishlist, pick your editions, order in one go.</p>
-        <Button size="lg" className="text-base px-8 h-12" onClick={() => setOpen(true)}>
+        <Button size="lg" className="text-base px-8 h-12 hidden sm:inline-flex" onClick={() => setOpen(true)}>
           <ShoppingCart className="h-5 w-5 mr-2" />
           Start a Stack
         </Button>
@@ -124,6 +124,12 @@ export default function HomePage() {
         </div>
         <div className="mt-8 p-4 rounded-xl border bg-muted/30 text-sm text-center max-w-2xl mx-auto">
           🌍 Outside the US? Listings come from <strong>ThriftBooks</strong>, <strong>Better World Books</strong>, and <strong>AbeBooks</strong> — all US-based. They do ship internationally, though shipping will be a bit pricier.
+        </div>
+        <div className="mt-8 flex justify-center sm:hidden">
+          <Button size="lg" className="text-base px-8 h-12" onClick={() => setOpen(true)}>
+            <ShoppingCart className="h-5 w-5 mr-2" />
+            Start a Stack
+          </Button>
         </div>
         <div className="mt-10 flex justify-center">
           <img

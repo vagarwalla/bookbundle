@@ -188,7 +188,7 @@ export function CartItemCard({ item, onUpdate, onRemove, onChangeCover, onPickCo
         {/* Condition */}
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground w-14 shrink-0">Condition</span>
-          <div className="flex gap-0.5 border rounded-md overflow-hidden text-sm">
+          <div className="flex gap-0.5 border rounded-md overflow-hidden text-sm min-h-[44px] sm:min-h-0 items-center">
             {CONDITIONS.map((c) => {
               const active = (item.conditions ?? []).includes(c.value)
               return (
@@ -208,7 +208,7 @@ export function CartItemCard({ item, onUpdate, onRemove, onChangeCover, onPickCo
         {/* Format */}
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground w-14 shrink-0">Format</span>
-          <div className="flex gap-0.5 border rounded-md overflow-hidden text-sm">
+          <div className="flex gap-0.5 border rounded-md overflow-hidden text-sm min-h-[44px] sm:min-h-0 items-center">
             {formatOptions.map((f) => (
               <button
                 key={f}
@@ -282,7 +282,7 @@ export function CartItemCard({ item, onUpdate, onRemove, onChangeCover, onPickCo
                   patch({ max_price: val })
                 }
               }}
-              className="h-7 w-16 px-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              className="h-11 sm:h-7 w-16 px-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
             />
           </div>
           {item.isbn_preferred && (!item.isbns_candidates || item.isbns_candidates.length < 2) && (
