@@ -1,13 +1,23 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Search, Loader2, Star } from 'lucide-react'
+import { Search, Loader2, Star, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import type { BookSearchResult } from '@/lib/types'
 import type { GoodreadsData } from '@/lib/goodreads'
 import { formatRatingsCount } from '@/lib/goodreads'
 
 const OL_COVERS = 'https://covers.openlibrary.org'
+const HISTORY_KEY = 'earmarked:search-history'
+const MAX_HISTORY = 8
+
+function loadHistory(): string[] {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]') } catch { return [] }
+}
+
+function saveHistory(terms: string[]) {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(terms))
+}
 
 interface Props {
   onSelect: (book: BookSearchResult) => void
@@ -35,8 +45,11 @@ export function BookSearch({ onSelect }: Props) {
   const [coverMap, setCoverMap] = useState<Record<string, string[]>>({})
   // work_id → Goodreads data (lazy-loaded after results render)
   const [goodreadsMap, setGoodreadsMap] = useState<Record<string, GoodreadsData | null>>({})
+  const [history, setHistory] = useState<string[]>([])
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { setHistory(loadHistory()) }, [])
 
   useEffect(() => {
     if (query.length < 2) {
@@ -88,7 +101,26 @@ export function BookSearch({ onSelect }: Props) {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
+  function addToHistory(term: string) {
+    const trimmed = term.trim()
+    if (!trimmed) return
+    const next = [trimmed, ...loadHistory().filter((h) => h.toLowerCase() !== trimmed.toLowerCase())].slice(0, MAX_HISTORY)
+    setHistory(next)
+    saveHistory(next)
+  }
+
+  function removeFromHistory(term: string) {
+    const next = loadHistory().filter((h) => h !== term)
+    setHistory(next)
+    saveHistory(next)
+  }
+
+  function handleHistoryClick(term: string) {
+    setQuery(term)
+  }
+
   function handleSelect(book: BookSearchResult) {
+    addToHistory(query)
     setQuery('')
     setOpen(false)
     onSelect(book)
@@ -108,6 +140,31 @@ export function BookSearch({ onSelect }: Props) {
           onChange={(e) => setQuery(e.target.value)}
         />
       </div>
+
+      {history.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap mt-2">
+          {history.map((term) => (
+            <span
+              key={term}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground border hover:border-primary/40 transition-colors"
+            >
+              <button
+                className="hover:text-foreground transition-colors"
+                onClick={() => handleHistoryClick(term)}
+              >
+                {term}
+              </button>
+              <button
+                className="hover:text-destructive transition-colors ml-0.5"
+                onClick={() => removeFromHistory(term)}
+                aria-label={`Remove ${term} from history`}
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
       {open && results.length > 0 && (
         <div className="absolute z-50 top-full mt-1 w-full bg-background border rounded-lg shadow-lg max-h-80 overflow-y-auto">
           {results.map((book) => {
