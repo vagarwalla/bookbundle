@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeListings, findSuggestion, findCheaperSuggestion } from '../relaxation'
+import { computeListings, findSuggestion, findCheaperSuggestion, findShippingRelaxSuggestions } from '../relaxation'
 import type { CartItem, Condition, Listing } from '../types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -363,5 +363,113 @@ describe('findCheaperSuggestion', () => {
     const currentListings = [makeListing({ listing_id: 'l1', isbn: 'isbn-1', price: 20.01, condition_normalized: 'new' })]
     const result = findCheaperSuggestion(item, byIsbn, currentListings, ['new'], null)
     expect(result).not.toBeNull()
+  })
+})
+
+// ── findShippingRelaxSuggestions ──────────────────────────────────────────────
+
+describe('findShippingRelaxSuggestions', () => {
+  it('returns suggestions when cheaper listings exist with relaxed conditions', () => {
+    const item = makeItem({ id: 'i1', isbn_preferred: 'isbn-1', conditions: ['new'] })
+    const currentListing = makeListing({ listing_id: 'l1', isbn: 'isbn-1', price: 20, condition_normalized: 'new' })
+    const byIsbn = makeByIsbn([
+      ['isbn-1', [
+        currentListing,
+        makeListing({ listing_id: 'l2', isbn: 'isbn-1', price: 8, condition_normalized: 'good' }),
+      ]],
+    ])
+    const result = findShippingRelaxSuggestions(
+      [{ item, listing: currentListing }],
+      byIsbn, {}, {},
+    )
+    expect(result).toHaveLength(1)
+    expect(result[0].savings).toBeCloseTo(12)
+    expect(result[0].relaxedPrice).toBe(8)
+    expect(result[0].addedLabels).toContain('Fine')
+  })
+
+  it('returns empty array when no cheaper listings exist', () => {
+    const item = makeItem({ id: 'i1', isbn_preferred: 'isbn-1', conditions: ['new', 'fine', 'good', 'fair'] })
+    const currentListing = makeListing({ listing_id: 'l1', isbn: 'isbn-1', price: 5, condition_normalized: 'new' })
+    const byIsbn = makeByIsbn([
+      ['isbn-1', [
+        currentListing,
+        makeListing({ listing_id: 'l2', isbn: 'isbn-1', price: 10, condition_normalized: 'fair' }),
+      ]],
+    ])
+    const result = findShippingRelaxSuggestions(
+      [{ item, listing: currentListing }],
+      byIsbn, {}, {},
+    )
+    expect(result).toHaveLength(0)
+  })
+
+  it('skips books where conditions already include all levels', () => {
+    const item = makeItem({ id: 'i1', isbn_preferred: 'isbn-1', conditions: ['new', 'fine', 'good', 'fair'] })
+    const currentListing = makeListing({ listing_id: 'l1', isbn: 'isbn-1', price: 20, condition_normalized: 'new' })
+    const byIsbn = makeByIsbn([
+      ['isbn-1', [
+        currentListing,
+        makeListing({ listing_id: 'l2', isbn: 'isbn-1', price: 5, condition_normalized: 'fair' }),
+      ]],
+    ])
+    const result = findShippingRelaxSuggestions(
+      [{ item, listing: currentListing }],
+      byIsbn, {}, {},
+    )
+    expect(result).toHaveLength(0)
+  })
+
+  it('uses conditionOverrides when provided', () => {
+    const item = makeItem({ id: 'i1', isbn_preferred: 'isbn-1', conditions: ['new'] })
+    const currentListing = makeListing({ listing_id: 'l1', isbn: 'isbn-1', price: 20, condition_normalized: 'new' })
+    const byIsbn = makeByIsbn([
+      ['isbn-1', [
+        currentListing,
+        makeListing({ listing_id: 'l2', isbn: 'isbn-1', price: 5, condition_normalized: 'good' }),
+      ]],
+    ])
+    // Override already includes good, so no further relaxation yields >$1 savings
+    const result = findShippingRelaxSuggestions(
+      [{ item, listing: currentListing }],
+      byIsbn,
+      { i1: ['new', 'fine', 'good', 'fair'] },
+      {},
+    )
+    expect(result).toHaveLength(0)
+  })
+
+  it('requires >$1 savings to suggest', () => {
+    const item = makeItem({ id: 'i1', isbn_preferred: 'isbn-1', conditions: ['new'] })
+    const currentListing = makeListing({ listing_id: 'l1', isbn: 'isbn-1', price: 10, condition_normalized: 'new' })
+    const byIsbn = makeByIsbn([
+      ['isbn-1', [
+        currentListing,
+        makeListing({ listing_id: 'l2', isbn: 'isbn-1', price: 9.5, condition_normalized: 'fine' }),
+      ]],
+    ])
+    const result = findShippingRelaxSuggestions(
+      [{ item, listing: currentListing }],
+      byIsbn, {}, {},
+    )
+    expect(result).toHaveLength(0)
+  })
+
+  it('sorts suggestions by savings descending', () => {
+    const item1 = makeItem({ id: 'i1', isbn_preferred: 'isbn-1', conditions: ['new'] })
+    const item2 = makeItem({ id: 'i2', isbn_preferred: 'isbn-2', conditions: ['new'], title: 'Book 2' })
+    const l1 = makeListing({ listing_id: 'l1', isbn: 'isbn-1', price: 15, condition_normalized: 'new' })
+    const l2 = makeListing({ listing_id: 'l2', isbn: 'isbn-2', price: 30, condition_normalized: 'new' })
+    const byIsbn = makeByIsbn([
+      ['isbn-1', [l1, makeListing({ listing_id: 'l3', isbn: 'isbn-1', price: 5, condition_normalized: 'good' })]],
+      ['isbn-2', [l2, makeListing({ listing_id: 'l4', isbn: 'isbn-2', price: 8, condition_normalized: 'good' })]],
+    ])
+    const result = findShippingRelaxSuggestions(
+      [{ item: item1, listing: l1 }, { item: item2, listing: l2 }],
+      byIsbn, {}, {},
+    )
+    expect(result).toHaveLength(2)
+    expect(result[0].itemId).toBe('i2') // $22 savings > $10 savings
+    expect(result[1].itemId).toBe('i1')
   })
 })

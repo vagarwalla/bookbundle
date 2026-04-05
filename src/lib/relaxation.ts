@@ -165,6 +165,60 @@ export function findNearMissPrice(
   return { cheapestBlocked, delta }
 }
 
+export interface ShippingRelaxSuggestion {
+  itemId: string
+  title: string
+  currentPrice: number
+  relaxedPrice: number
+  savings: number
+  addedLabels: string[]
+  newConditions: Condition[]
+}
+
+/**
+ * When a seller group's shipping exceeds a threshold, find books in the group that
+ * have cheaper listings available with relaxed conditions.
+ */
+export function findShippingRelaxSuggestions(
+  assignments: Array<{ item: CartItem; listing: Listing }>,
+  byIsbn: Record<string, Listing[]>,
+  conditionOverrides: Record<string, Condition[]>,
+  maxPriceOverrides: Record<string, number | null>,
+): ShippingRelaxSuggestion[] {
+  const suggestions: ShippingRelaxSuggestion[] = []
+
+  for (const { item, listing } of assignments) {
+    const conditions = conditionOverrides[item.id] ?? item.conditions ?? []
+    const maxPrice = item.id in maxPriceOverrides ? maxPriceOverrides[item.id] : item.max_price
+
+    const lowestIdx = Math.max(...conditions.map((c) => CONDITION_ORDER.indexOf(c)))
+    const worseConditions = CONDITION_ORDER.slice(lowestIdx + 1).filter((c) => !conditions.includes(c))
+    if (worseConditions.length === 0) continue
+
+    for (let i = 1; i <= worseConditions.length; i++) {
+      const expanded = [...conditions, ...worseConditions.slice(0, i)]
+      const expandedListings = computeListings(item, byIsbn, expanded, maxPrice)
+      if (expandedListings.length === 0) continue
+
+      const relaxedCheapest = Math.min(...expandedListings.map((l) => l.price))
+      if (relaxedCheapest < listing.price - 1) {
+        suggestions.push({
+          itemId: item.id,
+          title: item.title,
+          currentPrice: listing.price,
+          relaxedPrice: relaxedCheapest,
+          savings: listing.price - relaxedCheapest,
+          addedLabels: worseConditions.slice(0, i).map((c) => CONDITION_LABELS[c]),
+          newConditions: expanded,
+        })
+        break
+      }
+    }
+  }
+
+  return suggestions.sort((a, b) => b.savings - a.savings)
+}
+
 /** If cheapest listing > $20, find the minimal relaxation that would yield cheaper options. */
 export function findCheaperSuggestion(
   item: CartItem,

@@ -12,7 +12,9 @@ import {
   computeListings,
   findSuggestion,
   findCheaperSuggestion,
+  findShippingRelaxSuggestions,
   type RelaxSuggestion,
+  type ShippingRelaxSuggestion,
 } from '@/lib/relaxation'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -620,6 +622,42 @@ const hasUnpricedItems = items.some((i) => !i.isbn_preferred)
                           Group total: ${group.group_total.toFixed(2)}
                         </span>
                       </div>
+                      {group.shipping > 20 && (() => {
+                        const suggestions = findShippingRelaxSuggestions(
+                          group.assignments,
+                          listingsByIsbn,
+                          conditionOverrides,
+                          maxPriceOverrides,
+                        )
+                        if (suggestions.length === 0) return null
+                        const totalSavings = suggestions.reduce((s, sg) => s + sg.savings, 0)
+                        return (
+                          <div className="mt-1.5 rounded-md bg-amber-50 border border-amber-200 px-2.5 py-2 space-y-1.5">
+                            <div className="flex items-center gap-1.5 text-xs font-medium text-amber-800">
+                              <Lightbulb className="h-3.5 w-3.5 shrink-0" />
+                              Shipping is ${group.shipping.toFixed(2)} — save up to ${totalSavings.toFixed(2)} by relaxing conditions
+                            </div>
+                            {suggestions.map((sg) => (
+                              <div key={sg.itemId} className="flex items-center justify-between gap-2 text-xs">
+                                <span className="text-amber-700 truncate min-w-0">
+                                  <span className="font-medium">{sg.title}</span>: ${sg.relaxedPrice.toFixed(2)} accepting {sg.addedLabels.join(' / ')}
+                                  <span className="text-amber-600"> (saves ${sg.savings.toFixed(2)})</span>
+                                </span>
+                                <button
+                                  disabled={relaxing}
+                                  onClick={() => {
+                                    const next = { ...conditionOverrides, [sg.itemId]: sg.newConditions }
+                                    applyRelaxation(sg.itemId, next, maxPriceOverrides)
+                                  }}
+                                  className="shrink-0 text-xs font-medium px-2 py-0.5 rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+                                >
+                                  Accept
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      })()}
                       <Button
                         size="sm"
                         variant="outline"
