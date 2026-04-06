@@ -11,9 +11,12 @@ import {
   CONDITION_ORDER,
   computeListings,
   findSuggestion,
-  findCheaperSuggestion,
+  findRelaxedDeal,
+  findNearMissPrice,
   findShippingRelaxSuggestions,
   type RelaxSuggestion,
+  type RelaxedDeal,
+  type NearMissPrice,
   type ShippingRelaxSuggestion,
 } from '@/lib/relaxation'
 
@@ -55,18 +58,22 @@ function ListingRow({ listing }: { listing: Listing }) {
 }
 
 function BookListings({
-  item, listings, cheaper, onAcceptCheaper, onTryOtherEditions,
+  item, listings, deal, nearMiss, onAcceptDeal, onAcceptNearMiss, onTryOtherEditions,
 }: {
   item: CartItem
   listings: Listing[]
-  cheaper: { addedLabels: string[]; newConditions: Condition[]; cheaperPrice: number } | null
-  onAcceptCheaper: (newConditions: Condition[]) => void
+  deal: RelaxedDeal | null
+  nearMiss: NearMissPrice | null
+  onAcceptDeal: (newConditions: Condition[]) => void
+  onAcceptNearMiss: () => void
   onTryOtherEditions: (() => void) | null
 }) {
   const [expanded, setExpanded] = useState(false)
   const sorted = [...listings].sort((a, b) => totalCost(a) - totalCost(b)).slice(0, 20)
   const preview = sorted.slice(0, 3)
   const rest = sorted.slice(3)
+
+  const showDeal = deal && deal.tier !== 'trivial'
 
   return (
     <div className="space-y-0.5">
@@ -89,21 +96,49 @@ function BookListings({
       {expanded && rest.map((l) => <ListingRow key={l.listing_id} listing={l} />)}
 
       {/* Hints footer */}
-      {(cheaper || onTryOtherEditions) && (
+      {(showDeal || nearMiss || onTryOtherEditions) && (
         <div className="mt-1.5 space-y-1">
-          {cheaper && (
-            <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md bg-amber-50 border border-amber-200 text-sm">
-              <div className="flex items-center gap-1.5 text-amber-800 min-w-0">
+          {showDeal && (
+            <div className={`flex items-center justify-between gap-2 px-2 py-1.5 rounded-md text-sm ${
+              deal.tier === 'better_deal'
+                ? 'bg-green-50 border border-green-200'
+                : 'bg-amber-50 border border-amber-200'
+            }`}>
+              <div className={`flex items-center gap-1.5 min-w-0 ${
+                deal.tier === 'better_deal' ? 'text-green-800' : 'text-amber-800'
+              }`}>
                 <Lightbulb className="h-3.5 w-3.5 shrink-0" />
                 <span className="truncate">
-                  From <span className="font-medium">${cheaper.cheaperPrice.toFixed(2)}</span> accepting {cheaper.addedLabels.join(' or ')}
+                  <span className="font-medium">${deal.relaxedCheapest.toFixed(2)}</span> accepting {deal.addedLabels.join(' or ')}
+                  {' '}
+                  <span className="opacity-75">(save ${deal.savingsAmount.toFixed(2)})</span>
                 </span>
               </div>
               <button
-                onClick={() => onAcceptCheaper(cheaper.newConditions)}
-                className="shrink-0 text-xs font-medium text-amber-700 hover:text-amber-900 underline"
+                onClick={() => onAcceptDeal(deal.newConditions)}
+                className={`shrink-0 text-xs font-medium underline ${
+                  deal.tier === 'better_deal'
+                    ? 'text-green-700 hover:text-green-900'
+                    : 'text-amber-700 hover:text-amber-900'
+                }`}
               >
                 Accept
+              </button>
+            </div>
+          )}
+          {nearMiss && (
+            <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md bg-blue-50 border border-blue-200 text-sm">
+              <div className="flex items-center gap-1.5 text-blue-800 min-w-0">
+                <Lightbulb className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">
+                  Listing at <span className="font-medium">${nearMiss.cheapestBlocked.toFixed(2)}</span> is just ${nearMiss.delta.toFixed(2)} over your price cap
+                </span>
+              </div>
+              <button
+                onClick={onAcceptNearMiss}
+                className="shrink-0 text-xs font-medium text-blue-700 hover:text-blue-900 underline"
+              >
+                Remove cap
               </button>
             </div>
           )}
@@ -633,7 +668,7 @@ const hasUnpricedItems = items.some((i) => !i.isbn_preferred)
                           Group total: ${group.group_total.toFixed(2)}
                         </span>
                       </div>
-                      {group.shipping > 20 && (() => {
+                      {group.shipping > 8 && (() => {
                         const suggestions = findShippingRelaxSuggestions(
                           group.assignments,
                           listingsByIsbn,
@@ -727,6 +762,7 @@ const hasUnpricedItems = items.some((i) => !i.isbn_preferred)
           </div>
           {missingItems.map(({ item, conditions, maxPrice }) => {
             const suggestion = findSuggestion(item, listingsByIsbn, conditions, maxPrice)
+            const nearMiss = !suggestion ? findNearMissPrice(item, listingsByIsbn, conditions, maxPrice) : null
             const showEditionPicker = editionPickerFor === item.id
             return (
               <div key={item.id} className="px-3 py-2 space-y-1.5">
@@ -767,6 +803,23 @@ const hasUnpricedItems = items.some((i) => !i.isbn_preferred)
                     >
                       {relaxing && <Loader2 className="h-3 w-3 animate-spin" />}
                       Accept
+                    </button>
+                  </div>
+                ) : nearMiss ? (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-blue-700">
+                      Listing at <strong>${nearMiss.cheapestBlocked.toFixed(2)}</strong> is just ${nearMiss.delta.toFixed(2)} over your ${maxPrice!.toFixed(2)} cap
+                    </span>
+                    <button
+                      disabled={relaxing}
+                      onClick={() => {
+                        const next = { ...maxPriceOverrides, [item.id]: null }
+                        applyRelaxation(item.id, conditionOverrides, next)
+                      }}
+                      className="shrink-0 text-xs font-medium px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1"
+                    >
+                      {relaxing && <Loader2 className="h-3 w-3 animate-spin" />}
+                      Remove cap
                     </button>
                   </div>
                 ) : showEditionPicker ? (
@@ -818,17 +871,23 @@ const hasUnpricedItems = items.some((i) => !i.isbn_preferred)
         <div className="rounded-lg border bg-card divide-y">
           {itemListingCounts.map(({ item, listings, conditions, maxPrice }) => {
             if (listings.length === 0) return null
-            const cheaper = findCheaperSuggestion(item, listingsByIsbn, listings, conditions, maxPrice)
+            const deal = findRelaxedDeal(item, listingsByIsbn, listings, conditions, maxPrice)
+            const nearMiss = findNearMissPrice(item, listingsByIsbn, conditions, maxPrice)
             const showEditionPicker = editionPickerFor === item.id
             return (
               <div key={item.id} className="px-3 py-2 space-y-1">
                 <BookListings
                   item={item}
                   listings={listings}
-                  cheaper={cheaper}
-                  onAcceptCheaper={(newConditions) => {
+                  deal={deal}
+                  nearMiss={nearMiss}
+                  onAcceptDeal={(newConditions) => {
                     const next = { ...conditionOverrides, [item.id]: newConditions }
                     applyRelaxation(item.id, next, maxPriceOverrides)
+                  }}
+                  onAcceptNearMiss={() => {
+                    const next = { ...maxPriceOverrides, [item.id]: null }
+                    applyRelaxation(item.id, conditionOverrides, next)
                   }}
                   onTryOtherEditions={item.work_id ? () => setEditionPickerFor(showEditionPicker ? null : item.id) : null}
                 />
